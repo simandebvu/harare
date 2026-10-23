@@ -1,0 +1,13 @@
+{
+  "name": "slop-harare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server 8765",
+    "data": "node tools/build-data.mjs",
+    "shot": "node tools/shot.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.0"
+  }
+}
