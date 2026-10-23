@@ -1,5 +1,6 @@
 // js/trees.js — jacarandas (in full purple bloom: it's October), flamboyants, msasas and gums along the avenues and in parks
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { groundY, rng, coreWeight, Grid, segDist, pointInPoly, polyBounds } from './util.js';
 
 const KINDS = [
@@ -71,7 +72,9 @@ export function buildTrees(scene, DATA, blocked) {
 
   const n = spots.length;
   const trunkGeo = new THREE.CylinderGeometry(0.18, 0.32, 1, 6).translate(0, 0.5, 0);
-  const canopyGeo = new THREE.IcosahedronGeometry(1, 1);
+  // Lumpy canopy: a cluster of lobes reads as foliage rather than a single blob
+  const lobes = [[0, 0.15, 0, 0.75], [0.5, 0, 0.2, 0.55], [-0.45, -0.05, 0.3, 0.55], [0.1, -0.05, -0.55, 0.55], [-0.2, 0.35, -0.15, 0.5], [0.3, 0.3, 0.35, 0.45]];
+  const canopyGeo = mergeGeometries(lobes.map(([x, y, z, s]) => new THREE.IcosahedronGeometry(s, 0).translate(x, y, z)));
   const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: '#5a4636', roughness: 0.9 }), n);
   const canopies = new THREE.InstancedMesh(canopyGeo, new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true }), n);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();

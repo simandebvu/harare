@@ -56,24 +56,26 @@ function rdp(p, eps) {
 // --- buildings ------------------------------------------------------------------------------------------------------
 // Known heights (m) for landmarks OSM leaves untagged; matched against the building name
 const LANDMARK_HEIGHTS = [
-  [/Joina City/i, 92],
+  [/Joina City/i, 105],
   [/Eastgate Shopping/i, 34],
-  [/Karigamombe/i, 82],
-  [/Rainbow Towers/i, 64],
+  [/Karigamombe/i, 92],
+  [/Rainbow Towers/i, 62],
   [/Meikles/i, 43],
-  [/Old Mutual Centre/i, 66],
+  [/Old Mutual Centre/i, 72],
   [/Reserve Bank/i, 120],
-  [/Construction House/i, 60],
-  [/Livingstone House/i, 48],
+  [/Construction House/i, 44],
+  [/Livingstone House/i, 80],
   [/Kopje Plaza/i, 70],
   [/Charter House/i, 50],
-  [/Pearl House/i, 46],
+  [/Pearl House/i, 58],
   [/Zimre Centre|ZIMRE/i, 58],
   [/Social Security|NSSA/i, 56],
   [/Mukwati/i, 52],
   [/Parliament/i, 22],
   [/Town House/i, 18],
   [/Main Post/i, 16],
+  [/Hurudza/i, 56],
+  [/Meikles/i, 46],
 ];
 
 // The CBD grid core: towers cluster between Julius Nyerere Way and Fourth Street, Kenneth Kaunda and Samora Machel
