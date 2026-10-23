@@ -106,7 +106,7 @@ export function buildTrees(scene, DATA, blocked) {
   );
   carpet.forEach(([x, z], i) => {
     const k = 3 + r() * 3;
-    m.compose(new THREE.Vector3(x + r() * 2 - 1, groundY(x, z) + 0.11, z + r() * 2 - 1), q.identity(), new THREE.Vector3(k, 1, k * (0.7 + r() * 0.5)));
+    m.compose(new THREE.Vector3(x + r() * 2 - 1, groundY(x, z) + 0.17, z + r() * 2 - 1), q.identity(), new THREE.Vector3(k, 1, k * (0.7 + r() * 0.5)));
     petals.setMatrixAt(i, m);
   });
   petals.receiveShadow = true;

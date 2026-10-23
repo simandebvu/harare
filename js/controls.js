@@ -145,7 +145,7 @@ export class Controls {
       const fx = Math.sin(c.yaw) * 2.4 * Math.sign(c.v || 1), fz = Math.cos(c.yaw) * 2.4 * Math.sign(c.v || 1);
       if (this.blocked(nx + fx, nz + fz)) c.v *= -0.25;
       else (c.x = nx), (c.z = nz);
-      const y = groundY(c.x, c.z);
+      const y = groundY(c.x, c.z) + 0.22;
       this.kombi.position.set(c.x, y, c.z);
       this.kombi.rotation.set(0, c.yaw, 0);
       this.lampMat.color.setScalar(0.35 + nightness * 2.2);

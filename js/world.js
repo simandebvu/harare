@@ -1,6 +1,7 @@
 // js/world.js — ground, the Kopje, parks, roads (pavement, asphalt, paint), railway, street lights, Unity Square fountain
 import * as THREE from 'three';
 import { groundY, rng, hash2, coreWeight, Grid, polyCentroid, makeGeometry, KOPJE } from './util.js';
+import { asphaltTexture, pavementTexture, groundTexture } from './textures.js';
 
 const ROAD_RANK = { trunk: 6, primary: 5, secondary: 4, tertiary: 3, trunk_link: 3, primary_link: 3, secondary_link: 3, tertiary_link: 3, residential: 2, unclassified: 2, living_street: 2, pedestrian: 1, service: 0 };
 const AREA_COLORS = {
@@ -21,20 +22,28 @@ function densify(p, step = 12) {
   return out;
 }
 
+// Flat triangle soup with vertex colours and world-planar UVs (1 UV unit = `uvScale` metres)
 class Builder {
-  constructor() {
+  constructor(uvScale = 1) {
     this.pos = [];
     this.col = [];
     this.nrm = [];
+    this.uv = [];
+    this.k = 1 / uvScale;
   }
   tri(a, b, c, color) {
+    if (Number.isNaN(a[0] + a[2] + b[0] + b[2] + c[0] + c[2])) return;
     this.pos.push(...a, ...b, ...c);
+    this.uv.push(a[0] * this.k, a[2] * this.k, b[0] * this.k, b[2] * this.k, c[0] * this.k, c[2] * this.k);
     for (let i = 0; i < 3; i++) this.col.push(color.r, color.g, color.b), this.nrm.push(0, 1, 0);
   }
   geometry() {
-    return makeGeometry(THREE, { position: [this.pos, 3], normal: [this.nrm, 3], color: [this.col, 3] });
+    return makeGeometry(THREE, { position: [this.pos, 3], normal: [this.nrm, 3], color: [this.col, 3], uv: [this.uv, 2] });
   }
 }
+
+// Layer heights above the terrain: enough separation for a standard depth buffer at city scale
+const Y = { area: 0.05, pitch: 0.07, pave: 0.14, road: 0.22, paint: 0.3, zebra: 0.31 };
 
 // Flat ribbon along a polyline with mitred joins; `side` shifts it sideways (for edge lines)
 function ribbon(b, p, half, y, color, side = 0, colorFn = null) {
@@ -95,10 +104,12 @@ function dashes(b, p, half, y, color, on = 3, off = 6, side = 0) {
   }
 }
 
-export function buildWorld(scene, DATA) {
+export function buildWorld(scene, DATA, renderer) {
   const group = new THREE.Group();
   scene.add(group);
   const vcMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+  const groundTex = groundTexture(renderer);
+  const groundMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, map: groundTex });
 
   // --- ground: dry-season highveld, red earth and tawny grass --------------------------------------------------------
   const SIZE = 9000, SEG = 220;
@@ -119,10 +130,15 @@ export function buildWorld(scene, DATA) {
     gc.push(tmp.r, tmp.g, tmp.b);
   }
   gGeo.setAttribute('color', new THREE.Float32BufferAttribute(gc, 3));
+  const guv = gGeo.attributes.uv;
+  for (let i = 0; i < gp.count; i++) guv.setXY(i, gp.getX(i) / 24, gp.getZ(i) / 24);
   gGeo.computeVertexNormals();
-  const ground = new THREE.Mesh(gGeo, vcMat);
+  const ground = new THREE.Mesh(gGeo, groundMat);
   ground.receiveShadow = true;
   group.add(ground);
+  // Veld out to the horizon so the ground never ends (fog swallows it)
+  const outer = new THREE.Mesh(new THREE.RingGeometry(4000, 40000, 64, 1).rotateX(-Math.PI / 2).translate(-400, -0.6, 200), new THREE.MeshStandardMaterial({ color: '#8f7d5a', roughness: 1 }));
+  group.add(outer);
 
   // Granite boulders (dwalas) scattered over the Kopje
   {
@@ -145,13 +161,13 @@ export function buildWorld(scene, DATA) {
 
   // --- parks, pitches, rail yards -----------------------------------------------------------------------------------
   {
-    const b = new Builder();
+    const b = new Builder(24);
     for (const a of DATA.areas) {
       const col = new THREE.Color(AREA_COLORS[a.k] || '#6f8d44');
       const pts = [];
       for (let i = 0; i < a.p.length; i += 2) pts.push(new THREE.Vector2(a.p[i], a.p[i + 1]));
       const tris = THREE.ShapeUtils.triangulateShape(pts, []);
-      const y = a.k === 'pitch' ? 0.045 : a.k === 'railway' ? 0.02 : 0.03;
+      const y = a.k === 'pitch' ? Y.pitch : Y.area;
       for (const [i, j, k] of tris) {
         const P = (n) => [pts[n].x, groundY(pts[n].x, pts[n].y) + y, pts[n].y];
         // keep triangles facing up
@@ -161,25 +177,76 @@ export function buildWorld(scene, DATA) {
         else b.tri(P(i), P(k), P(j), col);
       }
     }
-    const m = new THREE.Mesh(b.geometry(), vcMat);
+    const m = new THREE.Mesh(b.geometry(), groundMat);
     m.receiveShadow = true;
     group.add(m);
+  }
+
+  // --- junctions: where markings stop and zebra crossings go ----------------------------------------------------------
+  const G = DATA.graph;
+  const deg = new Map(), jw = new Map(), jedges = new Map();
+  for (const e of G.edges)
+    for (const n of [e.a, e.b]) {
+      deg.set(n, (deg.get(n) || 0) + 1);
+      jw.set(n, Math.max(jw.get(n) || 0, e.w));
+      (jedges.get(n) || jedges.set(n, []).get(n)).push(e);
+    }
+  const junctions = [];
+  const jGrid = new Grid(40);
+  for (const [n, d] of deg) {
+    if (d < 3) continue;
+    const j = { x: G.nodes[n * 2], z: G.nodes[n * 2 + 1], r: jw.get(n) / 2 + 1.2, n };
+    junctions.push(j);
+    jGrid.insert(j, j.x - j.r - 8, j.z - j.r - 8, j.x + j.r + 8, j.z + j.r + 8);
+  }
+  const inJunction = (x, z, pad = 0) => jGrid.query(x, z).some((j) => Math.hypot(x - j.x, z - j.z) < j.r + pad);
+  // Split a polyline into runs that stay outside junction boxes
+  // (tested every 2 m, but only run ends and the original vertices are kept, so ribbons stay light)
+  function clipRuns(p, pad = 0) {
+    const runs = [];
+    let cur = [], lx = 0, lz = 0;
+    for (let i = 0; i < p.length; i += 2) {
+      const ax = p[i], az = p[i + 1];
+      const last = i + 2 >= p.length;
+      const bx = last ? ax : p[i + 2], bz = last ? az : p[i + 3];
+      const n = last ? 1 : Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2));
+      for (let k = 0; k < n; k++) {
+        const x = ax + ((bx - ax) * k) / n, z = az + ((bz - az) * k) / n;
+        if (inJunction(x, z, pad)) {
+          if (cur.length) cur.push(lx, lz); // close the run at the last sample outside
+          if (cur.length >= 4) runs.push(cur);
+          cur = [];
+        } else {
+          if (k === 0 || !cur.length) cur.push(x, z);
+          (lx = x), (lz = z);
+        }
+      }
+    }
+    if (cur.length >= 4) runs.push(cur);
+    // drop zero-length steps
+    return runs.map(dedupe).filter((r) => r.length >= 4);
+  }
+  function dedupe(r) {
+    const o = [r[0], r[1]];
+    for (let i = 2; i < r.length; i += 2) if (Math.hypot(r[i] - o[o.length - 2], r[i + 1] - o[o.length - 1]) > 0.05) o.push(r[i], r[i + 1]);
+    return o;
   }
 
   // --- roads ----------------------------------------------------------------------------------------------------------
   const roadGrid = new Grid(40);
   {
-    const pave = new Builder(), asphalt = new Builder(), paint = new Builder();
-    const concrete = new THREE.Color('#b5ab9c'), dirt = new THREE.Color('#a0704f'), tar = new THREE.Color('#3b3c3e'), tarOld = new THREE.Color('#4a4846');
+    const pave = new Builder(4.8), asphalt = new Builder(16), paint = new Builder();
+    const concrete = new THREE.Color('#c4baa9'), dirt = new THREE.Color('#a0704f'), tar = new THREE.Color('#47484a'), tarOld = new THREE.Color('#57534f');
     const brick = new THREE.Color('#9a6e5a'), white = new THREE.Color('#e9e6dc'), yellow = new THREE.Color('#e0b733');
+    const kerb = new THREE.Color('#cfc8bb'), kerbOld = new THREE.Color('#a59a8a'), gutter = new THREE.Color('#2a2826');
     const roads = [...DATA.roads].sort((a, b) => (ROAD_RANK[a.k] || 0) - (ROAD_RANK[b.k] || 0));
     const vergeColor = (x, z) => tmp.copy(dirt).lerp(concrete, Math.min(1, coreWeight(x, z) * 1.6)).clone();
     for (const r of roads) {
       const p = densify(r.p);
       const half = r.w / 2;
       const rank = ROAD_RANK[r.k] || 0;
-      const y = 0.08 + rank * 0.004;
-      if (rank > 0) ribbon(pave, p, half + 2.6, 0.06, null, 0, vergeColor);
+      const y = Y.road + rank * 0.006;
+      if (rank > 0) ribbon(pave, p, half + 2.6, Y.pave, null, 0, vergeColor);
       if (r.k === 'pedestrian') {
         ribbon(asphalt, p, half, y, brick);
       } else {
@@ -188,14 +255,25 @@ export function buildWorld(scene, DATA) {
         disc(asphalt, p[0], p[1], half, y, c);
         disc(asphalt, p[p.length - 2], p[p.length - 1], half, y, c);
         if (rank > 0) {
-          disc(pave, p[0], p[1], half + 2.6, 0.06, vergeColor(p[0], p[1]));
-          disc(pave, p[p.length - 2], p[p.length - 1], half + 2.6, 0.06, vergeColor(p[p.length - 2], p[p.length - 1]));
+          disc(pave, p[0], p[1], half + 2.6, Y.pave, vergeColor(p[0], p[1]));
+          disc(pave, p[p.length - 2], p[p.length - 1], half + 2.6, Y.pave, vergeColor(p[p.length - 2], p[p.length - 1]));
         }
-        if (rank >= 2 && !r.o && r.w >= 7.5) dashes(paint, p, 0.08, y + 0.03, white);
-        if (r.o && r.w >= 9) dashes(paint, p, 0.07, y + 0.03, white, 2.5, 5, 0);
-        if (rank >= 4) {
-          ribbon(paint, p, 0.08, y + 0.03, yellow, half - 0.45);
-          ribbon(paint, p, 0.08, y + 0.03, yellow, -(half - 0.45));
+        const yp = Y.paint + rank * 0.006;
+        for (const run of clipRuns(r.p, 1.5)) {
+          if (rank >= 2 && !r.o && r.w >= 7.5) dashes(paint, run, 0.08, yp, white);
+          if (r.o && r.w >= 9) dashes(paint, run, 0.07, yp, white, 2.5, 5, 0);
+          if (rank >= 4) {
+            ribbon(paint, run, 0.08, yp, yellow, half - 0.45);
+            ribbon(paint, run, 0.08, yp, yellow, -(half - 0.45));
+          }
+          // Kerb: pale concrete lip with a dark gutter on the road side
+          if (rank >= 2) {
+            const k = coreWeight(run[0], run[1]) > 0.05 ? kerb : kerbOld;
+            for (const sd of [1, -1]) {
+              ribbon(paint, run, 0.16, yp, k, sd * (half + 0.16));
+              ribbon(paint, run, 0.2, yp - 0.01, gutter, sd * (half - 0.2));
+            }
+          }
         }
       }
       for (let i = 2; i < r.p.length; i += 2) {
@@ -203,8 +281,33 @@ export function buildWorld(scene, DATA) {
         roadGrid.insert({ r, ax, az, bx, bz }, Math.min(ax, bx) - 10, Math.min(az, bz) - 10, Math.max(ax, bx) + 10, Math.max(az, bz) + 10);
       }
     }
-    for (const [b, rough] of [[pave, 0.95], [asphalt, 0.85], [paint, 0.7]]) {
-      const m = new THREE.Mesh(b.geometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough }));
+    // Zebra crossings on each approach to CBD junctions
+    const zebra = new THREE.Color('#ecebe4');
+    for (const j of junctions) {
+      if (coreWeight(j.x, j.z) < 0.05) continue;
+      for (const e of jedges.get(j.n)) {
+        if (e.w < 7) continue;
+        // direction away from the junction along the edge
+        const atA = e.a === j.n;
+        const px = atA ? e.p[2] : e.p[e.p.length - 4], pz = atA ? e.p[3] : e.p[e.p.length - 3];
+        let dx = px - j.x, dz = pz - j.z;
+        const l = Math.hypot(dx, dz);
+        if (l < j.r + 5) continue;
+        (dx /= l), (dz /= l);
+        const nx = dz, nz = -dx, c0 = j.r + 1.2, half = e.w / 2 - 0.4;
+        for (let s = -half; s < half; s += 1.0) {
+          const x0 = j.x + dx * c0 + nx * s, z0 = j.z + dz * c0 + nz * s;
+          ribbon(paint, [x0, z0, x0 + dx * 3, z0 + dz * 3], 0.25, Y.zebra, zebra);
+        }
+      }
+    }
+    const roadMats = [
+      [pave, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, map: pavementTexture(renderer) })],
+      [asphalt, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, map: asphaltTexture(renderer), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })],
+      [paint, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })],
+    ];
+    for (const [b, mat] of roadMats) {
+      const m = new THREE.Mesh(b.geometry(), mat);
       m.receiveShadow = true;
       group.add(m);
     }
@@ -216,9 +319,9 @@ export function buildWorld(scene, DATA) {
     const ballast = new THREE.Color('#77695d'), steel = new THREE.Color('#5d5a57');
     for (const r of DATA.rail) {
       const p = densify(r);
-      ribbon(b, p, 1.8, 0.1, ballast);
-      ribbon(b, p, 0.07, 0.3, steel, 0.53);
-      ribbon(b, p, 0.07, 0.3, steel, -0.53);
+      ribbon(b, p, 1.8, Y.pave, ballast);
+      ribbon(b, p, 0.07, 0.35, steel, 0.53);
+      ribbon(b, p, 0.07, 0.35, steel, -0.53);
     }
     const m = new THREE.Mesh(b.geometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.2 }));
     m.receiveShadow = true;
@@ -238,8 +341,8 @@ export function buildWorld(scene, DATA) {
     spout.position.set(cx, 1.5, cz);
     const b = new Builder();
     const path = new THREE.Color('#c9b9a0');
-    ribbon(b, [cx - 70, cz - 50, cx + 70, cz + 50], 1.8, 0.07, path);
-    ribbon(b, [cx - 70, cz + 50, cx + 70, cz - 50], 1.8, 0.07, path);
+    ribbon(b, [cx - 70, cz - 50, cx + 70, cz + 50], 1.8, Y.pitch + 0.03, path);
+    ribbon(b, [cx - 70, cz + 50, cx + 70, cz - 50], 1.8, Y.pitch + 0.03, path);
     const paths = new THREE.Mesh(b.geometry(), vcMat);
     for (const m of [basin, spout]) (m.castShadow = true), (m.receiveShadow = true);
     group.add(basin, water, spout, paths);
@@ -285,7 +388,7 @@ export function buildWorld(scene, DATA) {
       m.compose(new THREE.Vector3(x, y, z), q, one);
       poles.setMatrixAt(i, m);
       heads.setMatrixAt(i, m);
-      m.makeTranslation(x + dx * 1.5, y + 0.2, z + dz * 1.5);
+      m.makeTranslation(x + dx * 1.5, y + 0.4, z + dz * 1.5);
       glows.setMatrixAt(i, m);
     });
   }

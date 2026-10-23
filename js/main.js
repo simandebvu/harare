@@ -9,6 +9,8 @@ import { buildTrees } from './trees.js';
 import { createTraffic } from './traffic.js';
 import { createPeople } from './people.js';
 import { Controls } from './controls.js';
+import { createPost } from './post.js';
+import { createClouds } from './clouds.js';
 
 const LAT = -17.83;
 const DECLINATION = -11.6; // late October: the sun passes almost straight overhead at noon
@@ -21,8 +23,8 @@ const step = (msg) => {
 
 async function init() {
   const app = document.getElementById('app');
-  const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' }); // MSAA lives in the composer target
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -35,12 +37,13 @@ async function init() {
   app.appendChild(labelRenderer.domElement);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, 12000);
+  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1.0, 45000);
   camera.position.set(420, 380, 620);
 
   // --- sky, sun, fog ------------------------------------------------------------------------------------------------
   const sky = new Sky();
   sky.scale.setScalar(10000);
+  sky.renderOrder = -2;
   sky.material.uniforms.turbidity.value = 6;
   sky.material.uniforms.rayleigh.value = 1.2;
   sky.material.uniforms.mieCoefficient.value = 0.006;
@@ -60,6 +63,8 @@ async function init() {
   const hemi = new THREE.HemisphereLight('#d6e2f5', '#9a7652', 1.0);
   scene.add(hemi);
   scene.fog = new THREE.FogExp2('#c8c2b4', 0.00028);
+  const clouds = createClouds(scene);
+  const post = createPost(renderer, scene, camera);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = new THREE.Scene();
@@ -70,7 +75,7 @@ async function init() {
 
   // --- city ------------------------------------------------------------------------------------------------------------
   await step('laying out streets…');
-  const world = buildWorld(scene, DATA);
+  const world = buildWorld(scene, DATA, renderer);
   await step(`raising ${DATA.buildings.length} buildings…`);
   const buildings = buildBuildings(scene, DATA);
   await step('planting jacarandas…');
@@ -106,6 +111,16 @@ async function init() {
   const controls = new Controls(camera, renderer.domElement, scene, buildings.blocked);
   controls.map.target.set(0, 0, 0);
   controls.map.update();
+  // Hook for tools/shot.mjs: place the fly camera precisely
+  window.__harare = {
+    scene,
+    setCamera(x, y, z, tx, ty, tz) {
+      setMode('fly');
+      camera.position.set(x, y, z);
+      controls.map.target.set(tx, ty, tz);
+      controls.map.update();
+    },
+  };
 
   // --- time of day -----------------------------------------------------------------------------------------------------
   const timeInput = document.getElementById('time');
@@ -137,13 +152,16 @@ async function init() {
     hemi.intensity = 0.55 + 0.7 * day;
     hemi.color.set('#d6e2f5').lerp(new THREE.Color('#5a6ea8'), nightness);
     hemi.groundColor.set('#9a7652').lerp(new THREE.Color('#2a2420'), nightness);
-    renderer.toneMappingExposure = 0.55 + nightness * 0.35;
-    scene.fog.color.copy(fogDay).lerp(fogDusk, golden * 0.6).lerp(fogNight, nightness);
-    scene.fog.density = 0.00028 + nightness * 0.00012;
+    renderer.toneMappingExposure = 0.6 + nightness * 0.35;
+    // Dry-season haze: dust and veld-fire smoke thicken the air toward the horizon
+    scene.fog.color.copy(fogDay).lerp(fogDusk, golden * 0.7).lerp(fogNight, nightness);
+    scene.fog.density = 0.00036 + golden * 0.0001 + nightness * 0.00006;
     scene.background = nightness > 0.98 ? fogNight : null;
 
     buildings.setNight(nightness);
     world.setNight(nightness);
+    post.setNight(nightness);
+    clouds.setSun(sunDir, sun.color, nightness);
 
     const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
     clock.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -162,7 +180,7 @@ async function init() {
   // --- HUD -------------------------------------------------------------------------------------------------------------
   const help = document.getElementById('help');
   const HELP = {
-    fly: 'Drag to pan · right-drag to orbit · scroll to zoom · WASD to glide · L labels · T advance time',
+    fly: 'Drag to pan · right-drag to orbit · scroll to zoom · WASD to glide · L labels · T advance time · P quality',
     walk: 'Click to look around · WASD walk · Shift run · Q/E turn · Esc release mouse',
     drive: 'W/S accelerate & reverse · A/D steer · Space brake · keep left!',
   };
@@ -189,6 +207,10 @@ async function init() {
       labels.visible = labelsOn && controls.mode === 'fly';
       labelRenderer.domElement.style.display = labels.visible ? '' : 'none';
     }
+    if (e.code === 'KeyP') {
+      post.setQuality((post.quality + 2) % 3);
+      showQuality();
+    }
     if (e.code === 'KeyT') {
       hour = (hour + 0.5) % 24;
       timeInput.value = hour;
@@ -197,6 +219,13 @@ async function init() {
   });
   setMode('fly');
 
+  const QUALITY = ['low (no post-processing)', 'medium (bloom + grade)', 'high (+ ambient occlusion)'];
+  let toastT = 0;
+  const showQuality = () => {
+    where.textContent = `Quality: ${QUALITY[post.quality]}`;
+    whereT = 1.5;
+    toastT = 1.5;
+  };
   const where = document.getElementById('where');
   let whereT = 0;
 
@@ -204,23 +233,38 @@ async function init() {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
+    post.setSize(innerWidth, innerHeight);
     labelRenderer.setSize(innerWidth, innerHeight);
   });
+  post.setSize(innerWidth, innerHeight);
 
   // --- loop -------------------------------------------------------------------------------------------------------------
   const timer = new THREE.Clock();
+  const frameTimes = [];
+  let userQuality = false;
+  addEventListener('keydown', (e) => e.code === 'KeyP' && (userQuality = true));
   function frame() {
     const dt = timer.getDelta();
     controls.update(dt, nightness);
     traffic.update(dt, nightness);
     people.update(dt);
+    clouds.update(dt, camera);
+
+    // Drop ambient occlusion automatically if the machine can't keep up
+    if (timer.elapsedTime > 6) frameTimes.push(dt); // ignore the post-load warm-up
+    if (frameTimes.length > 90) {
+      frameTimes.shift();
+      const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+      if (avg > 1 / 38 && post.quality > 1 && !userQuality) post.setQuality(1), showQuality(), (frameTimes.length = 0);
+    }
 
     // Shadow frustum follows what you're looking at
     const p = controls.position;
-    const focus = new THREE.Vector3(p.x, 0, p.z);
+    // Snap focus and span to steps so shadows don't shimmer as the camera moves
+    const focus = new THREE.Vector3(Math.round(p.x / 8) * 8, 0, Math.round(p.z / 8) * 8);
     sun.target.position.copy(focus);
     sun.position.copy(focus).addScaledVector(sunDir, 1200);
-    const span = controls.mode === 'fly' ? Math.min(700, Math.max(200, camera.position.distanceTo(focus))) : 220;
+    const span = controls.mode === 'fly' ? Math.round(Math.min(700, Math.max(200, camera.position.distanceTo(focus))) / 100) * 100 : 200;
     const sc = sun.shadow.camera;
     if (sc.right !== span) {
       sc.left = sc.bottom = -span;
@@ -228,13 +272,13 @@ async function init() {
       sc.updateProjectionMatrix();
     }
 
-    if ((whereT -= dt) < 0) {
+    if ((toastT -= dt) < 0 && (whereT -= dt) < 0) {
       whereT = 0.4;
       const street = world.streetAt(p.x, p.z);
       where.textContent = street ? `📍 ${street}` : '';
     }
 
-    renderer.render(scene, camera);
+    post.render();
     if (labels.visible) labelRenderer.render(scene, camera);
   }
   frame();
