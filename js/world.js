@@ -195,7 +195,7 @@ export function buildWorld(scene, DATA, renderer) {
   const jGrid = new Grid(40);
   for (const [n, d] of deg) {
     if (d < 3) continue;
-    const j = { x: G.nodes[n * 2], z: G.nodes[n * 2 + 1], r: jw.get(n) / 2 + 1.2, n };
+    const j = { x: G.nodes[n], z: G.nodes[n + 1], r: jw.get(n) / 2 + 1.2, n };
     junctions.push(j);
     jGrid.insert(j, j.x - j.r - 8, j.z - j.r - 8, j.x + j.r + 8, j.z + j.r + 8);
   }

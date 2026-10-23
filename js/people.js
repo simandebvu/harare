@@ -1,11 +1,24 @@
-// js/people.js — pedestrians on the pavements and street vendors with umbrellas, crates of tomatoes and bananas
+// js/people.js — pedestrians on the pavements, street vendors under umbrellas, crowds and touts at the kombi ranks, and
+// hawkers who walk out between the cars while the robots are red. Everyone is one GPU-animated instanced mesh
+// (figures.js); this file only decides where they stand and whether they're walking.
 import * as THREE from 'three';
 import { groundY, rng, coreWeight } from './util.js';
+import { createFigures } from './figures.js';
+import { STREET } from './street.js';
+import { rankLayout } from './ranks.js';
+import { MeshKit } from './meshkit.js';
 
-const CLOTHES = ['#2d3e66', '#8a2222', '#e8e2d2', '#1f1f22', '#3f6f3a', '#d9a521', '#6b4c8a', '#c2562c', '#4a6d8c', '#7c7f84', '#f0c9d0', '#2e7f7a'];
-const SKIN = ['#4a2e20', '#5c3a26', '#3b2418', '#6b4630', '#2f1d14', '#7a5238'];
+const TOPS = ['#2d3e66', '#8a2222', '#e8e2d2', '#f4f4f0', '#3f6f3a', '#d9a521', '#6b4c8a', '#c2562c', '#4a6d8c', '#7c7f84', '#f0c9d0', '#2e7f7a', '#e0d34a', '#b8322f', '#1f6fb3', '#ffffff', '#ef8a2a'];
+const TROUSERS = ['#2a3550', '#1e2a44', '#3b4f73', '#1c1c1e', '#34302b', '#6e6250', '#8a7d62', '#4a4d52', '#5a3d2b'];
+const DRESSES = ['#c0283a', '#e3a01b', '#2f5fa8', '#6d2f8a', '#e2557a', '#1f7a5a', '#d9632b', '#f2e6c9', '#1d1d1f', '#8fc0e8', '#a33d16'];
+const SUITS = ['#1d2230', '#2a2c30', '#3a3d44', '#232a3a'];
+const DOEKS = ['#d33a2c', '#f0b52a', '#1f6fb3', '#2c8a4b', '#7c2f9a', '#f2f2ee', '#e2557a', '#e8752a'];
+const SKIN = ['#3b2418', '#4a2e20', '#5c3a26', '#2f1d14', '#6b4630', '#41291c', '#53341f', '#7a5238'];
+const BASINS = ['#c9cdd2', '#d63a2a', '#2f6fb3', '#3d8d46', '#e3b31f'];
+const BAGS = ['#3a2a1e', '#1c1c1e', '#6a4428', '#2f6fb3', '#b33a2a', '#d9cbb0'];
 const UMBRELLAS = ['#d63a2a', '#f2c230', '#2f6fb3', '#3d8d46', '#e86d24', '#ffffff', '#7d3fb0'];
 const PRODUCE = ['#c7271c', '#e8c22a', '#4c7a2a', '#e07b22', '#6e3b1f', '#f0e6c8'];
+const PAVE = 0.15; // pavement surface height above groundY
 
 export function createPeople(scene, DATA, blocked, count = 2600) {
   const r = rng(314);
@@ -15,7 +28,10 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     const cum = [0];
     for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(e.p[i * 2] - e.p[i * 2 - 2], e.p[i * 2 + 1] - e.p[i * 2 - 1]));
     const [mx, mz] = [e.p[Math.floor(n / 2) * 2], e.p[Math.floor(n / 2) * 2 + 1]];
-    return { ...e, cum, L: cum[n - 1], core: coreWeight(mx, mz) };
+    // signal axis of the approach at each end (0 = east-west, 1 = north-south), same rule as traffic.js
+    const axA = Math.abs(e.p[2] - e.p[0]) > Math.abs(e.p[3] - e.p[1]) ? 0 : 1;
+    const axB = Math.abs(e.p[n * 2 - 2] - e.p[n * 2 - 4]) > Math.abs(e.p[n * 2 - 1] - e.p[n * 2 - 3]) ? 0 : 1;
+    return { ...e, cum, L: cum[n - 1], core: coreWeight(mx, mz), axA, axB };
   });
   const at = new Map();
   edges.forEach((e, i) => {
@@ -46,58 +62,112 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     for (let i = 0; i < edges.length; i++) if ((t -= weight(edges[i])) <= 0) return i;
     return 0;
   };
+  const pick = (arr) => arr[Math.floor(r() * arr.length)];
 
-  const people = [];
-  for (let i = 0; i < count; i++) {
-    const e = pickEdge();
-    people.push({
-      e, d: r() * edges[e].L, dir: r() < 0.5 ? 1 : -1, side: r() < 0.5 ? 1 : -1, lat: r() * 1.6,
-      v: 1.0 + r() * 0.6, ph: r() * 6.28, h: 1.55 + r() * 0.3, x: 0, z: 0, yaw: 0, init: false,
-    });
-  }
-
-  // Body (clothes) and skin as two instanced meshes sharing transforms
-  const bodyGeo = mergeBoxes([
-    [0, 0.45, 0, 0.32, 0.9, 0.22], // legs / trousers
-    [0, 1.17, 0, 0.44, 0.6, 0.26], // torso
-  ]);
-  const skinGeo = new THREE.SphereGeometry(0.12, 8, 6).translate(0, 1.6, 0);
-  const bodies = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({ roughness: 0.9 }), count);
-  const heads = new THREE.InstancedMesh(skinGeo, new THREE.MeshStandardMaterial({ roughness: 0.7 }), count);
-  const c = new THREE.Color();
-  people.forEach((p, i) => {
-    bodies.setColorAt(i, c.set(CLOTHES[Math.floor(r() * CLOTHES.length)]));
-    heads.setColorAt(i, c.set(SKIN[Math.floor(r() * SKIN.length)]));
-  });
-  bodies.castShadow = true;
-  bodies.frustumCulled = heads.frustumCulled = false;
-  scene.add(bodies, heads);
-
-  // --- vendors: static stalls on CBD pavements ---------------------------------------------------------------------
+  // --- layout first (so we know how many figures to allocate) --------------------------------------------------------
   const stalls = [];
-  for (const e of edges) {
+  for (let ei = 0; ei < edges.length; ei++) {
+    const e = edges[ei];
     if (e.core < 0.2) continue;
     const n = Math.floor((e.L / 25) * e.core * (r() < 0.5 ? 1 : 0.5));
     for (let k = 0; k < n; k++) {
-      const d = r() * e.L;
-      const s = sample(edges.indexOf(e), d, {});
+      const s = sample(ei, r() * e.L, {});
       const side = r() < 0.5 ? 1 : -1;
       const off = (e.w / 2 + 2.3) * side;
       const x = s.x + s.tz * off, z = s.z - s.tx * off;
-      if (!blocked(x, z)) stalls.push({ x, z, side, yaw: Math.atan2(s.tx, s.tz) });
+      if (!blocked(x, z)) stalls.push({ x, z, y: PAVE, side, yaw: Math.atan2(s.tx, s.tz) });
     }
   }
+  const ranks = rankLayout(DATA);
+  for (const R of ranks) for (const s of R.stalls) stalls.push({ x: s.x, z: s.z, y: s.y, side: 1, yaw: s.yaw + Math.PI / 2 });
+  const rankFolk = ranks.flatMap((R) => R.crowd.map((c) => ({ ...c, rank: R })));
+
+  // Hawker beats: approaches into busy robot junctions, two-way or multi-lane, long enough to queue on
+  const beats = [];
+  if (STREET.lights && STREET.edges) {
+    for (const [node, L] of STREET.lights) {
+      if (coreWeight(L.x, L.z) < 0.5) continue;
+      for (const ei of at.get(node) || []) {
+        const E = edges[ei], T = STREET.edges[ei];
+        if (!T || E.L < 45) continue;
+        const dir = E.b === node ? 1 : -1; // travel direction that heads into the junction
+        if (E.o && E.o !== dir) continue;
+        if (E.o && T.lanesDir < 2) continue;
+        const off = E.o ? (0.5 - (T.lanesDir - 1) / 2) * T.laneW : 0; // centre line, or the line between lanes
+        beats.push({ node, L, e: ei, dir, axis: dir > 0 ? E.axB : E.axA, off, kerb: E.w / 2 + 1.1 });
+      }
+    }
+    for (let i = beats.length - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      [beats[i], beats[j]] = [beats[j], beats[i]];
+    }
+    beats.length = Math.min(beats.length, 34);
+  }
+
+  const capacity = count + stalls.length + rankFolk.length + beats.length;
+  const F = createFigures(scene, capacity);
+
+  // --- outfits ---------------------------------------------------------------------------------------------------------
+  const cT = new THREE.Color(), cB = new THREE.Color(), cS = new THREE.Color(), cA = new THREE.Color();
+  // kind: 'walker' | 'vendor' | 'rank' | 'tout' | 'hawker'
+  function dress(kind, core = 1) {
+    const woman = r() < 0.5;
+    const child = kind === 'walker' && r() < 0.04;
+    let dressed = 0, load = 0, bag = 0, doek = 0;
+    cS.set(pick(SKIN));
+    if (woman) {
+      dressed = r() < 0.6 ? 1 : 0;
+      doek = r() < (kind === 'vendor' ? 0.6 : 0.3) ? 1 : 0;
+      cT.set(pick(TOPS));
+      cB.set(dressed ? pick(DRESSES) : pick(TROUSERS));
+      if (dressed && r() < 0.6) cT.copy(cB); // one-piece dress
+      cA.set(doek ? pick(DOEKS) : pick(BAGS));
+    } else if (kind === 'walker' && r() < 0.18 * core) {
+      cT.set(pick(SUITS)); // office workers in the CBD
+      cB.copy(cT);
+      cA.set(pick(BAGS));
+    } else {
+      cT.set(pick(TOPS));
+      cB.set(pick(TROUSERS));
+      cA.set(pick(BAGS));
+    }
+    const carry = kind === 'walker' || kind === 'rank' || kind === 'hawker';
+    if (carry && !child && r() < (kind === 'hawker' ? 0.45 : 0.1)) {
+      load = woman ? (r() < 0.75 ? 1 + Math.floor(r() * 2) : 3) : r() < 0.7 ? 3 : 1;
+      if (load < 3) cA.set(pick(BASINS));
+      else cA.set(pick(DOEKS));
+    }
+    if (!load && !child && carry && r() < 0.28) bag = r() < 0.55 ? 1 : 2;
+    if (kind === 'hawker' && !load) bag = 2;
+    if (load === 0 && doek) cA.set(pick(DOEKS));
+    const h = child ? 1.1 + r() * 0.25 : woman ? 1.55 + r() * 0.17 : 1.63 + r() * 0.22;
+    const b = child ? 0.85 : 0.9 + r() * 0.22 + (woman && r() < 0.3 ? 0.08 : 0);
+    const s = h / 1.72;
+    const v = child ? 1.0 + r() * 0.4 : 1.0 + r() * 0.55;
+    const i = F.add(cT, cB, cS, cA, dressed, load, bag, doek, r() * 6.283, (v * 4.4) / s);
+    return { i, s, b, v };
+  }
+
+  // --- pedestrians ----------------------------------------------------------------------------------------------------
+  const walkers = [];
+  for (let k = 0; k < count; k++) {
+    const e = pickEdge();
+    const o = dress('walker', edges[e].core);
+    walkers.push({ ...o, e, d: r() * edges[e].L, dir: r() < 0.5 ? 1 : -1, side: r() < 0.5 ? 1 : -1, lat: r() * 1.6, wq: r() * 1.4, x: 0, z: 0, yaw: 0, amp: 1, init: false });
+  }
+
+  // --- vendors: stalls on CBD pavements and around the ranks -------------------------------------------------------------
   const ns = stalls.length;
+  const c = new THREE.Color();
   const table = new THREE.InstancedMesh(mergeBoxes([[0, 0.75, 0, 1.4, 0.06, 0.8], [0.6, 0.37, 0.3, 0.06, 0.74, 0.06], [-0.6, 0.37, 0.3, 0.06, 0.74, 0.06], [0.6, 0.37, -0.3, 0.06, 0.74, 0.06], [-0.6, 0.37, -0.3, 0.06, 0.74, 0.06]]), new THREE.MeshStandardMaterial({ color: '#7a5a3a', roughness: 0.9 }), ns);
   const produce = new THREE.InstancedMesh(new THREE.SphereGeometry(0.3, 7, 5).scale(1.6, 0.5, 1).translate(0, 0.86, 0), new THREE.MeshStandardMaterial({ roughness: 0.6 }), ns);
   const umbrella = new THREE.InstancedMesh(new THREE.ConeGeometry(1.3, 0.5, 8).translate(0, 2.25, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, side: THREE.DoubleSide }), ns);
   const stick = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.025, 0.025, 2.1, 4).translate(0, 1.05, 0), new THREE.MeshStandardMaterial({ color: '#cccccc' }), ns);
-  const seller = new THREE.InstancedMesh(mergeBoxes([[0, 0.3, 0, 0.36, 0.6, 0.36], [0, 0.85, 0, 0.42, 0.55, 0.26]]), new THREE.MeshStandardMaterial({ roughness: 0.9 }), ns);
-  const sellerHead = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 8, 6).translate(0, 1.26, 0), new THREE.MeshStandardMaterial({ roughness: 0.7 }), ns);
+  const vendors = [];
   {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
     stalls.forEach((s, i) => {
-      const y = groundY(s.x, s.z) + 0.1;
+      const y = groundY(s.x, s.z) + s.y;
       q.setFromAxisAngle(up, s.yaw);
       m.compose(v.set(s.x, y, s.z), q, one);
       table.setMatrixAt(i, m);
@@ -106,63 +176,190 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       umbrella.setMatrixAt(i, m);
       produce.setColorAt(i, c.set(PRODUCE[Math.floor(r() * PRODUCE.length)]));
       umbrella.setColorAt(i, c.set(UMBRELLAS[Math.floor(r() * UMBRELLAS.length)]));
-      // Seller on a crate behind the table, facing the street
-      const bx = s.x + Math.cos(s.yaw) * 0.9 * s.side, bz = s.z - Math.sin(s.yaw) * 0.9 * s.side;
-      q.setFromAxisAngle(up, s.yaw + Math.PI / 2);
-      m.compose(v.set(bx, y, bz), q, one);
-      seller.setMatrixAt(i, m);
-      sellerHead.setMatrixAt(i, m);
-      seller.setColorAt(i, c.set(CLOTHES[Math.floor(r() * CLOTHES.length)]));
-      sellerHead.setColorAt(i, c.set(SKIN[Math.floor(r() * SKIN.length)]));
+      // Seller standing behind the table, facing the street
+      const o = dress('vendor');
+      const bx = s.x + Math.cos(s.yaw) * 0.85 * s.side, bz = s.z - Math.sin(s.yaw) * 0.85 * s.side;
+      const yaw = s.yaw - (Math.PI / 2) * s.side;
+      F.place(o.i, bx, y, bz, yaw, o.s, o.b);
+      vendors.push({ ...o, t: r() * 10 });
     });
   }
-  for (const m of [table, umbrella, seller]) m.castShadow = true;
-  if (ns) scene.add(table, produce, umbrella, stick, seller, sellerHead);
+  for (const m of [table, umbrella]) m.castShadow = true;
+  if (ns) scene.add(table, produce, umbrella, stick);
 
-  // --- walking -------------------------------------------------------------------------------------------------------
-  const tmp = {}, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v3 = new THREE.Vector3(), sc = new THREE.Vector3();
+  // --- ranks: shelters, queues, touts, milling crowd --------------------------------------------------------------------
+  const shelterList = ranks.flatMap((R) => R.shelters);
+  if (shelterList.length) {
+    const k = new MeshKit({ color: 3 });
+    const roof = [0.55, 0.57, 0.58], post = [0.2, 0.2, 0.21], bench = [0.35, 0.24, 0.15];
+    k.taper(0, 2.55, 0, 2.8, 1, 2.8, 1, 0.07, { color: roof }); // unit length, scaled per instance along z
+    for (const [x, z] of [[-1.2, -0.45], [1.2, -0.45], [-1.2, 0.45], [1.2, 0.45]]) k.box(x, 1.28, z, 0.08, 2.56, 0.08 / 1, { color: post });
+    k.box(-0.9, 0.42, 0, 0.4, 0.06, 0.96, { color: bench });
+    const shelters = new THREE.InstancedMesh(k.build(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 }), shelterList.length);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    shelterList.forEach((s, i) => {
+      q.setFromAxisAngle(up, s.yaw);
+      m.compose(v.set(s.x, groundY(s.x, s.z) + s.y, s.z), q, sc.set(1, 1, s.len));
+      shelters.setMatrixAt(i, m);
+    });
+    shelters.castShadow = shelters.receiveShadow = true;
+    scene.add(shelters);
+  }
+  const loiter = []; // rank crowd + touts: stand, chat, shuffle a few metres, wave at passing kombis
+  for (const f of rankFolk) {
+    const o = dress(f.kind === 'tout' ? 'tout' : 'rank');
+    loiter.push({ ...o, kind: f.kind, rank: f.rank, ax: f.x, az: f.z, x: f.x, z: f.z, y: f.y, yaw: f.yaw, tx: f.x, tz: f.z, t: r() * 8, amp: 0, g: 0, moving: false });
+  }
+
+  // --- hawkers ------------------------------------------------------------------------------------------------------------
+  const hawkers = beats.map((B) => {
+    const o = dress('hawker');
+    const u0 = B.L.w / 2 + 7 + r() * 10;
+    const kerbLat = B.kerb; // left-hand kerb of the incoming lanes
+    return { ...o, B, u: u0, lat: kerbLat, tu: u0, tlat: kerbLat, home: u0, out: false, t: 0, amp: 0, g: 0, yaw: 0 };
+  });
+
+  // --- simulation ---------------------------------------------------------------------------------------------------------
+  const tmp = {};
+  let time = 0;
+  const ease = (cur, target, k) => cur + (target - cur) * k;
 
   function update(dt) {
     dt = Math.min(dt, 0.1);
-    people.forEach((p, i) => {
-      p.d += p.v * dt * p.dir;
-      const E = edges[p.e];
+    time += dt;
+    const lights = STREET.lights, st = STREET.time;
+    const kA = Math.min(1, dt * 4);
+
+    // Pavement walkers
+    for (let wi = 0; wi < walkers.length; wi++) {
+      const p = walkers[wi];
+      let E = edges[p.e];
+      let go = 1;
+      // Wait at the kerb of a robot junction until traffic going our way has green
+      if (lights) {
+        const L = lights.get(p.dir > 0 ? E.b : E.a);
+        if (L) {
+          const toEnd = p.dir > 0 ? E.L - p.d : p.d;
+          const kerb = L.w / 2 + 0.5;
+          if (toEnd > kerb && toEnd < kerb + 0.3 + p.wq && STREET.signal(L, p.dir > 0 ? E.axB : E.axA, st) !== 0) go = 0;
+        }
+      }
+      p.d += p.v * dt * p.dir * go;
       if (p.d < 0 || p.d > E.L) {
         const node = p.d < 0 ? E.a : E.b;
-        const opts = (at.get(node) || []).filter((o) => o !== p.e);
+        const opts = at.get(node);
         // Prefer the busier streets so the crowd stays in town
         let next = p.e, bw = -1;
-        for (const o of opts) {
+        if (opts) for (let k = 0; k < opts.length; k++) {
+          const o = opts[k];
+          if (o === p.e) continue;
           const w = (0.15 + edges[o].core) * r();
           if (w > bw) (bw = w), (next = o);
         }
         const N = edges[next];
-        if (next === p.e) p.dir = -p.dir, (p.d = Math.max(0, Math.min(E.L, p.d)));
+        if (next === p.e) (p.dir = -p.dir), (p.d = Math.max(0, Math.min(E.L, p.d)));
         else if (N.a === node) (p.e = next), (p.dir = 1), (p.d = 0);
         else (p.e = next), (p.dir = -1), (p.d = N.L);
+        E = edges[p.e];
       }
-      const N = edges[p.e];
       sample(p.e, p.d, tmp);
-      const off = (N.w / 2 + 0.8 + p.lat) * p.side;
+      const off = (E.w / 2 + 0.8 + p.lat) * p.side;
       const tx = tmp.x + tmp.tz * off, tz = tmp.z - tmp.tx * off;
       if (!p.init) (p.x = tx), (p.z = tz), (p.init = true);
       const k = Math.min(1, dt * 3);
       p.x += (tx - p.x) * k;
       p.z += (tz - p.z) * k;
       p.yaw = Math.atan2(tmp.tx * p.dir, tmp.tz * p.dir);
-      p.ph += dt * p.v * 5.5;
-      const bob = Math.abs(Math.sin(p.ph)) * 0.05;
-      q.setFromAxisAngle(up, p.yaw + Math.sin(p.ph) * 0.06);
-      const s = p.h / 1.72;
-      m4.compose(v3.set(p.x, groundY(p.x, p.z) + 0.12 + bob, p.z), q, sc.set(s, s, s));
-      bodies.setMatrixAt(i, m4);
-      heads.setMatrixAt(i, m4);
-    });
-    bodies.instanceMatrix.needsUpdate = true;
-    heads.instanceMatrix.needsUpdate = true;
-  }
+      p.amp = ease(p.amp, go, kA);
+      F.place(p.i, p.x, groundY(p.x, p.z) + PAVE, p.z, p.yaw, p.s, p.b);
+      F.animate(p.i, p.amp, 0);
+    }
 
-  return { update, count, stalls: ns };
+    // Stall sellers: mostly still, now and then calling out with a raised hand
+    for (let k = 0; k < vendors.length; k++) {
+      const v = vendors[k];
+      v.t -= dt;
+      if (v.t < -2.5) v.t = 4 + r() * 14;
+      F.animate(v.i, 0, v.t < 0 ? 0.7 : 0);
+    }
+
+    // Rank crowds and touts
+    for (let k = 0; k < loiter.length; k++) {
+      const p = loiter[k];
+      p.t -= dt;
+      if (p.moving) {
+        const dx = p.tx - p.x, dz = p.tz - p.z, d = Math.hypot(dx, dz);
+        if (d < 0.15) (p.moving = false), (p.t = 2 + r() * 8);
+        else {
+          const step = Math.min(d, p.v * 0.75 * dt);
+          p.x += (dx / d) * step;
+          p.z += (dz / d) * step;
+          let dh = Math.atan2(dx, dz) - p.yaw;
+          p.yaw += Math.atan2(Math.sin(dh), Math.cos(dh)) * Math.min(1, dt * 6);
+        }
+      } else if (p.t < 0) {
+        const roam = p.kind === 'mill' ? 0.6 : p.kind === 'tout' ? 0.5 : 0.08;
+        if (r() < roam) {
+          const a = r() * 6.283, d = p.kind === 'queue' ? 0.6 : 1.5 + r() * 4;
+          const tx = p.ax + Math.cos(a) * d, tz = p.az + Math.sin(a) * d;
+          if (p.rank.clear(tx, tz)) (p.tx = tx), (p.tz = tz), (p.moving = true);
+          else p.t = 1;
+        } else {
+          p.t = 3 + r() * 9;
+          p.yaw += (r() - 0.5) * 1.6;
+        }
+      }
+      const gestT = p.kind === 'tout' ? (Math.sin(time * 0.9 + p.ax) > 0.1 ? 1 : 0) : 0;
+      p.amp = ease(p.amp, p.moving ? 1 : 0, kA);
+      p.g = ease(p.g, gestT, kA);
+      F.place(p.i, p.x, groundY(p.x, p.z) + p.y, p.z, p.yaw, p.s, p.b);
+      F.animate(p.i, p.amp, p.g);
+    }
+
+    // Hawkers: out between the queued cars while their approach is red, back to the kerb before it turns green
+    for (let k = 0; k < hawkers.length; k++) {
+      const h = hawkers[k], B = h.B, E = edges[B.e];
+      const a = lights ? STREET.axisPhase(B.L, B.axis, st) : 0;
+      const window = a > 21 && a < 35.5;
+      const stopU = B.L.w / 2 + 6;
+      if (window && !h.out) (h.out = true), (h.tlat = B.off), (h.tu = h.u), (h.t = 0);
+      if (!window && h.out) (h.out = false), (h.tlat = B.kerb), (h.tu = h.home);
+      const onLine = Math.abs(h.lat - h.tlat) < 0.05;
+      let moving = false, gest = 0;
+      if (!onLine) {
+        // step out / back perpendicular to the traffic
+        h.lat += Math.sign(h.tlat - h.lat) * Math.min(Math.abs(h.tlat - h.lat), h.v * dt);
+        moving = true;
+      } else if (Math.abs(h.u - h.tu) > 0.05) {
+        h.u += Math.sign(h.tu - h.u) * Math.min(Math.abs(h.tu - h.u), h.v * 0.8 * dt);
+        moving = true;
+      } else if (h.out) {
+        // pause beside a car window, goods held up, then move on along the queue
+        h.t -= dt;
+        gest = 1;
+        if (h.t < 0) (h.t = 1.5 + r() * 3), (h.tu = stopU + r() * 22);
+      } else gest = Math.sin(time * 0.7 + k) > 0.6 ? 0.6 : 0;
+      const d = Math.max(0, Math.min(E.L, B.dir > 0 ? E.L - h.u : h.u));
+      sample(B.e, d, tmp);
+      const tx = tmp.tx * B.dir, tz = tmp.tz * B.dir; // travel direction into the junction
+      const x = tmp.x + tz * h.lat, z = tmp.z - tx * h.lat; // left of travel
+      let yaw;
+      if (!onLine) yaw = Math.atan2(tz, -tx) + (h.tlat > h.lat ? 0 : Math.PI);
+      else if (moving) yaw = Math.atan2(tx, tz) + (h.tu < h.u ? 0 : Math.PI);
+      else yaw = h.out ? Math.atan2(tz, -tx) : Math.atan2(-tz, tx); // face the cars / face the road
+      let dh = yaw - h.yaw;
+      h.yaw += Math.atan2(Math.sin(dh), Math.cos(dh)) * Math.min(1, dt * 8);
+      h.amp = ease(h.amp, moving ? 1 : 0, kA);
+      h.g = ease(h.g, gest, kA);
+      F.place(h.i, x, groundY(x, z) + (Math.abs(h.lat) < E.w / 2 ? 0.26 : PAVE), z, h.yaw, h.s, h.b);
+      F.animate(h.i, h.amp, h.g);
+    }
+
+    F.commit(time);
+  }
+  update(0);
+
+  return { update, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
 }
 
 function mergeBoxes(list) {
