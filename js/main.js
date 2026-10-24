@@ -11,6 +11,7 @@ import { createPeople } from './people.js';
 import { Controls } from './controls.js';
 import { createPost } from './post.js';
 import { createClouds } from './clouds.js';
+import { features } from './features/index.js';
 
 const LAT = -17.83;
 const DECLINATION = -11.6; // late October: the sun passes almost straight overhead at noon
@@ -219,6 +220,26 @@ async function init() {
   });
   setMode('fly');
 
+  // Feature modules get one shared context. Fields are stable API for js/features/*.
+  const ctx = {
+    THREE, DATA, scene, camera, renderer, post, sun, sky, clouds,
+    world, buildings, trees, traffic, people, controls, labels,
+    setMode,
+    getMode: () => controls.mode,
+    getHour: () => hour,
+    setHour(h) {
+      hour = ((h % 24) + 24) % 24;
+      timeInput.value = hour;
+      applyTime();
+    },
+    getNightness: () => nightness,
+    getSunDir: () => sunDir,
+    streetAt: (x, z) => world.streetAt(x, z),
+    teleport: (x, z, yaw) => controls.teleport(x, z, yaw),
+  };
+  window.__harare.ctx = ctx;
+  for (const f of features) await f.init?.(ctx);
+
   const QUALITY = ['low (no post-processing)', 'medium (bloom + grade)', 'high (+ ambient occlusion)'];
   let toastT = 0;
   const showQuality = () => {
@@ -248,6 +269,7 @@ async function init() {
     controls.update(dt, nightness);
     traffic.update(dt, nightness);
     people.update(dt);
+    for (const f of features) f.update?.(dt, ctx);
     clouds.update(dt, camera);
     trees.update(dt, camera);
 

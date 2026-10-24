@@ -85,6 +85,23 @@ export class Controls {
     this.chase.set(this.car.x, 0, this.car.z);
   }
 
+  // Move the active player (walker, kombi or fly target) to (x, z), facing yaw (radians, 0 = south / +z)
+  teleport(x, z, yaw) {
+    const o = this.mode === 'walk' ? this.walk : this.mode === 'drive' ? this.car : null;
+    if (o) {
+      o.x = x;
+      o.z = z;
+      if (yaw !== undefined) o.yaw = this.mode === 'walk' ? yaw + Math.PI : yaw;
+      if (this.mode === 'drive') (this.car.v = 0), this.chase.set(x, 0, z);
+      this.nudgeFree(o);
+    } else {
+      const d = this.camera.position.clone().sub(this.map.target);
+      this.map.target.set(x, 0, z);
+      this.camera.position.set(x, 0, z).add(d);
+      this.map.update();
+    }
+  }
+
   // Spiral outward until we're not standing inside a building
   nudgeFree(o) {
     for (let r = 0; r < 200 && this.blocked(o.x, o.z); r += 2) {
