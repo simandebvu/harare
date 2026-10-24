@@ -152,7 +152,7 @@ async function init() {
     sun.color.copy(noon).lerp(warm, golden);
     hemi.intensity = 0.9 + 0.15 * day;
     hemi.color.set('#d6e2f5').lerp(new THREE.Color('#7088c8'), nightness);
-    hemi.groundColor.set('#9a7652').lerp(new THREE.Color('#2a2420'), nightness);
+    hemi.groundColor.set('#9a7652').lerp(new THREE.Color('#3a3430'), nightness);
     renderer.toneMappingExposure = 0.6 + nightness * 0.35;
     // Dry-season haze: dust and veld-fire smoke thicken the air toward the horizon
     scene.fog.color.copy(fogDay).lerp(fogDusk, golden * 0.7).lerp(fogNight, nightness);

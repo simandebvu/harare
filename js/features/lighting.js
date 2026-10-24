@@ -3,8 +3,9 @@
 // load-shedding left out). A shader patch, chained onto each standard material's own onBeforeCompile, adds that light
 // to anything near street level (roads, pavements, walls, trees, people, vehicles), falling off with height.
 // Runs last among the features so it can patch materials the others created.
+import { coreWeight, hash2 } from '../util.js';
 
-const LAMP_RADIUS = 15; // m: pool radius on the ground
+const LAMP_RADIUS = 19; // m: pool radius on the ground
 const PX = 1.6; // m per light-map texel
 
 export default {
@@ -37,6 +38,35 @@ export default {
       grd.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
       g.fillStyle = grd;
       g.fillRect(px - rad, pz - rad, rad * 2, rad * 2);
+    }
+    // Shopfronts: lit windows and open shops spill warm light onto the pavement in front of them
+    let shops = 0;
+    for (const bd of ctx.DATA.buildings) {
+      const p = bd.p, n = p.length / 2;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const ax = p[i * 2], az = p[i * 2 + 1], bx = p[j * 2], bz = p[j * 2 + 1];
+        const len = Math.hypot(bx - ax, bz - az);
+        if (len < 4) continue;
+        const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+        if (coreWeight(mx, mz) < 0.2) continue;
+        // outward side: whichever side of the edge is outside the footprint (test a step off the midpoint)
+        let nx = (bz - az) / len, nz = -(bx - ax) / len;
+        if (ctx.buildings.blocked(mx + nx * 1.5, mz + nz * 1.5)) (nx = -nx), (nz = -nz);
+        if (ctx.buildings.blocked(mx + nx * 1.5, mz + nz * 1.5)) continue;
+        for (let t = 2; t < len - 1; t += 4.5) {
+          const x = ax + ((bx - ax) * t) / len + nx * 1.8, z = az + ((bz - az) * t) / len + nz * 1.8;
+          if (hash2(Math.floor(x * 0.3), Math.floor(z * 0.3)) < 0.45) continue; // shuttered
+          if (x < x0 || x > x1 || z < z0 || z > z1) continue;
+          const px = (x - x0) * sx, pz = (z - z0) * sz, rad = 5.5 * sx;
+          const grd = g.createRadialGradient(px, pz, 0, px, pz, rad);
+          grd.addColorStop(0, 'rgba(255,190,110,0.75)');
+          grd.addColorStop(1, 'rgba(255,196,120,0)');
+          g.fillStyle = grd;
+          g.fillRect(px - rad, pz - rad, rad * 2, rad * 2);
+          shops++;
+        }
+      }
     }
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -78,7 +108,7 @@ export default {
               float hf = 1.0 - smoothstep(5.0, 16.0, vLampW.y);
               // surfaces facing up catch more than walls
               float up = 0.55 + 0.45 * clamp(dot(normal, (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), 0.0, 1.0);
-              reflectedLight.indirectDiffuse += diffuseColor.rgb * lamp * hf * up * uLampNight * 7.0;
+              reflectedLight.indirectDiffuse += diffuseColor.rgb * lamp * hf * up * uLampNight * 11.0;
             }
           }`
         );
@@ -106,7 +136,7 @@ export default {
       }
     });
     this.patched = done.size;
-    console.log(`[harare] lighting: ${spots.filter((s) => s[4]).length}/${spots.length} street lamps lit, ${done.size} materials patched, ${W}×${H} light map`);
+    console.log(`[harare] lighting: ${spots.filter((s) => s[4]).length}/${spots.length} street lamps lit, ${done.size} materials patched, ${W}×${H} light map, ${shops} lit shopfronts`);
   },
 
   update(dt, ctx) {
