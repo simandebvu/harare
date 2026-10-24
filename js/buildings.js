@@ -29,9 +29,9 @@ const mf = (m) => [0, 0, m * 10];
 const PALETTE = {
   colonial: ['#ebe0c4', '#e3cf9f', '#f1ece0', '#d9b77e', '#a8553a', '#e8dcc0', '#cfa66b', '#efe6cf'],
   colonialTrim: ['#6b2a26', '#2f4a34', '#f4f1ea', '#3b3f45'],
-  modern: ['#e9e6de', '#d6d3cb', '#cfc8b8', '#e2dccd', '#bfbcb5', '#d8cfbd', '#c9c6bd'],
+  modern: ['#efe6d2', '#e6d6b6', '#f3eee2', '#dcc8a4', '#e8dcc4', '#d9cbb0', '#cfd3cc', '#e9d2b8', '#d8c09a', '#f0e8d8'],
   mosaic: ['#6f8c9c', '#7d927a', '#b48a6e', '#8a9aa6'],
-  granite: ['#a89a92', '#9c9590', '#b3a69a', '#8f8782', '#bdb3a8', '#a39484'],
+  granite: ['#b8a090', '#a89488', '#c2ae9a', '#9e8a7e', '#c8b8a4', '#b09078'],
   brick: ['#8c4a34', '#9a5a3e', '#7b4433', '#a3684b', '#6f3f30', '#b98a62', '#8a5444', '#c09a70'],
   house: ['#efe7d6', '#e8dcc2', '#f2d3b3', '#d8c3a5', '#ffffff', '#e4c9a8', '#c9b49a'],
   tin: ['#8e3b2a', '#7a4a3a', '#5e6266', '#9a5a3c', '#6d3527', '#8a8f91', '#3f5e4a'],
@@ -425,7 +425,7 @@ export function buildBuildings(scene, DATA, renderer) {
         style = r() < 0.35 ? 5 : 1;
         const t = r();
         if (t < 0.05) (mat = MAT.mosaic), (wall = PALETTE.mosaic[Math.floor(r() * PALETTE.mosaic.length)]);
-        else if (t < 0.36) (mat = MAT.brick), (wall = PALETTE.brick[Math.floor(r() * PALETTE.brick.length)]);
+        else if (t < 0.42) (mat = MAT.brick), (wall = PALETTE.brick[Math.floor(r() * PALETTE.brick.length)]);
         else (mat = t < 0.55 ? MAT.concrete : t < 0.68 ? MAT.precast : MAT.render), (wall = PALETTE.modern[Math.floor(r() * PALETTE.modern.length)]);
       } else {
         style = r() < 0.55 ? 2 : 6;
@@ -1038,7 +1038,7 @@ const FRAG_FACADE = /* glsl */ `
           vec3 meanEmit = mix(vec3(0.9, 0.75, 0.55), vec3(0.75, 0.85, 1.0), 0.4) * (uNight * (kind > 0.5 ? 0.5 : 0.3) + day * 0.12);
           openEmit = mix(openEmit, meanEmit, lod);
           openCol = mix(openCol, vec3(0.03), lod);
-          glassAmt = mix(glassAmt, 0.8, lod);
+          glassAmt = mix(glassAmt, 0.5, lod);
           openN = normalize(mix(openN, N, lod));
         }
       } else {
@@ -1046,7 +1046,7 @@ const FRAG_FACADE = /* glsl */ `
         float pLit = (uNight * (kind > 0.5 ? 0.5 : 0.3) + day * 0.12);
         openEmit = mix(vec3(0.9, 0.75, 0.55), vec3(0.75, 0.85, 1.0), 0.4) * pLit;
         openCol = vec3(0.03);
-        glassAmt = 0.8;
+        glassAmt = 0.5;
       }
       float cov = mix(m, 0.32 * under, lod);
       diffuseColor.rgb = mix(diffuseColor.rgb, openCol, cov);

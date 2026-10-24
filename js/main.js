@@ -45,9 +45,9 @@ async function init() {
   const sky = new Sky();
   sky.scale.setScalar(40000); // a box: keep it larger than the suburbs' horizon (camera far is 45 km)
   sky.renderOrder = -2;
-  sky.material.uniforms.turbidity.value = 6;
-  sky.material.uniforms.rayleigh.value = 1.2;
-  sky.material.uniforms.mieCoefficient.value = 0.006;
+  sky.material.uniforms.turbidity.value = 2.4;
+  sky.material.uniforms.rayleigh.value = 1.6;
+  sky.material.uniforms.mieCoefficient.value = 0.0035;
   sky.material.uniforms.mieDirectionalG.value = 0.85;
   scene.add(sky);
 
@@ -130,7 +130,7 @@ async function init() {
   let nightness = 0;
   const sunDir = new THREE.Vector3();
   const warm = new THREE.Color('#ffb070'), noon = new THREE.Color('#fff6e8');
-  const fogDay = new THREE.Color('#cfc7b4'), fogDusk = new THREE.Color('#d39a6a'), fogNight = new THREE.Color('#1a2030');
+  const fogDay = new THREE.Color('#b8c4d0'), fogDusk = new THREE.Color('#d39a6a'), fogNight = new THREE.Color('#1a2030');
 
   function applyTime() {
     const H = ((hour - 12.2) * 15 * Math.PI) / 180;
@@ -148,15 +148,15 @@ async function init() {
     envSky.material.uniforms.sunPosition.value.copy(sunDir);
     for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) envSky.material.uniforms[k].value = sky.material.uniforms[k].value;
 
-    sun.intensity = 3.2 * day * Math.min(1, el * 6 + 0.2);
+    sun.intensity = 3.8 * day * Math.min(1, el * 6 + 0.2);
     sun.color.copy(noon).lerp(warm, golden);
-    hemi.intensity = 0.9 + 0.35 * day;
+    hemi.intensity = 0.9 + 0.15 * day;
     hemi.color.set('#d6e2f5').lerp(new THREE.Color('#7088c8'), nightness);
     hemi.groundColor.set('#9a7652').lerp(new THREE.Color('#2a2420'), nightness);
     renderer.toneMappingExposure = 0.6 + nightness * 0.35;
     // Dry-season haze: dust and veld-fire smoke thicken the air toward the horizon
     scene.fog.color.copy(fogDay).lerp(fogDusk, golden * 0.7).lerp(fogNight, nightness);
-    scene.fog.density = 0.00036 + golden * 0.0001 + nightness * 0.00006;
+    scene.fog.density = 0.0002 + golden * 0.00008 + nightness * 0.0001;
     scene.background = nightness > 0.98 ? fogNight : null;
 
     buildings.setNight(nightness);

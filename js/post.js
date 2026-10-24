@@ -11,10 +11,10 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
-    uSat: { value: 1.08 },
+    uSat: { value: 1.16 },
     uWarm: { value: 0.6 },
-    uVignette: { value: 0.35 },
-    uContrast: { value: 0.18 },
+    uVignette: { value: 0.3 },
+    uContrast: { value: 0.32 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
