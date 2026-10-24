@@ -766,6 +766,9 @@ vec3 interior(vec3 o, vec3 d, vec2 rid, float roomW, float roomH, float depth, f
       vec3 hw = rnd.x < 0.3 ? vec3(0.5, 0.48, 0.45) : rnd.x < 0.5 ? vec3(0.55, 0.3, 0.12) : rnd.x < 0.7 ? vec3(0.15, 0.25, 0.45) : vec3(0.6, 0.55, 0.4);
       col = sy < 0.1 ? vec3(0.35, 0.25, 0.18) : hw * (0.7 + 0.3 * rnd.y) * (sy > 0.75 ? 0.5 : 1.0);
     }
+    // stock seen through glass reads as a soft, warm jumble, not a barcode: mute it toward the shelf colour
+    float sl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = mix(mix(vec3(sl), vec3(0.32, 0.27, 0.22), 0.35), col, 0.45);
   }
   // furniture: a desk / sofa / counter card facing the window
   float zf = shop ? 1.6 : mix(1.2, min(2.8, depth - 0.6), r2);

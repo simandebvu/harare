@@ -144,7 +144,7 @@ export function buildTrees(scene, DATA, blocked) {
           '#include <opaque_fragment>',
           `#ifdef TREE_LEAF
             // foliage in shade and sky light goes greyer, not bluer
-            vec3 shadeTint = mix(vec3(1.03, 1.0, 0.9), vec3(1.0), treeSun);
+            vec3 shadeTint = mix(vec3(1.08, 1.0, 0.84), vec3(1.0), treeSun);
             outgoingLight = mix(vec3(dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722))), outgoingLight * shadeTint, mix(0.62, 0.9, treeSun));
           #endif
           #include <opaque_fragment>`

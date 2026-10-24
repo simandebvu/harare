@@ -5,5 +5,6 @@ import audio from './audio.js';
 import suburbs from './suburbs.js';
 import furniture from './furniture.js';
 import lighting from './lighting.js';
+import shadows from './shadows.js';
 
-export const features = [game, map, audio, suburbs, furniture, lighting];
+export const features = [game, map, audio, suburbs, furniture, lighting, shadows];
