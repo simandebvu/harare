@@ -445,7 +445,8 @@ export function buildBuildings(scene, DATA, renderer) {
       const solidMat = mat === MAT.glass ? MAT.precast : mat;
       // Blank flanks: party walls and back walls away from the street get no windows
       const pBlank = kind === 'colonial' ? 0.7 : style === 2 ? 0 : 0.4;
-      const blank = (e) => e.len > 4 && streetGap(e.mx + e.nx, e.mz + e.nz) > 9 && r() < pBlank;
+      // infill plots abut their neighbours: any wall not on the street is a windowless party wall
+      const blank = (e) => e.len > 4 && streetGap(e.mx + e.nx, e.mz + e.nz) > (bd.k === 'infill' ? 5 : 9) && (bd.k === 'infill' || r() < pBlank);
 
       // Massing: podium + tower for big modern/post plots, setback crown for post towers
       let edges, podEdges = null;
