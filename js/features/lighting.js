@@ -5,7 +5,7 @@
 // Runs last among the features so it can patch materials the others created.
 import { coreWeight, hash2 } from '../util.js';
 
-const LAMP_RADIUS = 19; // m: pool radius on the ground
+const LAMP_RADIUS = 16; // m: pool radius on the ground
 const PX = 1.6; // m per light-map texel
 
 export default {
@@ -60,7 +60,7 @@ export default {
           if (x < x0 || x > x1 || z < z0 || z > z1) continue;
           const px = (x - x0) * sx, pz = (z - z0) * sz, rad = 5.5 * sx;
           const grd = g.createRadialGradient(px, pz, 0, px, pz, rad);
-          grd.addColorStop(0, 'rgba(255,190,110,0.75)');
+          grd.addColorStop(0, 'rgba(255,190,110,0.55)');
           grd.addColorStop(1, 'rgba(255,196,120,0)');
           g.fillStyle = grd;
           g.fillRect(px - rad, pz - rad, rad * 2, rad * 2);
@@ -108,7 +108,7 @@ export default {
               float hf = 1.0 - smoothstep(5.0, 16.0, vLampW.y);
               // surfaces facing up catch more than walls
               float up = 0.55 + 0.45 * clamp(dot(normal, (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), 0.0, 1.0);
-              reflectedLight.indirectDiffuse += diffuseColor.rgb * lamp * hf * up * uLampNight * 11.0;
+              reflectedLight.indirectDiffuse += diffuseColor.rgb * lamp * hf * up * uLampNight * 5.0;
             }
           }`
         );
