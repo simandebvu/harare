@@ -2,11 +2,13 @@
 import * as THREE from 'three';
 import { groundY, rng, hash2, coreWeight, Grid, polyCentroid, makeGeometry, KOPJE } from './util.js';
 import { asphaltTexture, pavementTexture, groundTexture } from './textures.js';
+import { buildLots } from './lots.js';
 
 const ROAD_RANK = { trunk: 6, primary: 5, secondary: 4, tertiary: 3, trunk_link: 3, primary_link: 3, secondary_link: 3, tertiary_link: 3, residential: 2, unclassified: 2, living_street: 2, pedestrian: 1, service: 0 };
+// Dusty October greens (end of the dry season, before the rains); mottled in the shader below
 const AREA_COLORS = {
-  park: '#5d8a3c', garden: '#5a8b3f', pitch: '#4f8f3a', stadium: '#6a8a45', recreation_ground: '#79904a',
-  grass: '#6f8d44', cemetery: '#6c7c4a', railway: '#7d6b58',
+  park: '#6f8a4a', garden: '#6c874a', pitch: '#64884a', stadium: '#6f8650', recreation_ground: '#808c55',
+  grass: '#7d8c52', cemetery: '#737b52', railway: '#7d6b58',
 };
 
 const tmp = new THREE.Color();
@@ -127,6 +129,7 @@ export function buildWorld(scene, DATA, renderer) {
     tmp.copy(grass).lerp(earth, n * 0.7).lerp(green, Math.max(0, hash2(Math.floor(x / 140), Math.floor(z / 140)) - 0.55));
     if (y > 8) tmp.lerp(rock, Math.min(0.7, (y - 8) / 40) * (0.5 + 0.5 * n)); // granite kopje
     tmp.lerp(new THREE.Color('#8c7d6a'), coreWeight(x, z) * 0.55); // trampled, dusty CBD lots
+    tmp.lerp(new THREE.Color('#a39c90'), Math.max(0, Math.min(1, (coreWeight(x, z) - 0.2) * 4))); // under js/lots.js paving
     gc.push(tmp.r, tmp.g, tmp.b);
   }
   gGeo.setAttribute('color', new THREE.Float32BufferAttribute(gc, 3));
@@ -177,10 +180,37 @@ export function buildWorld(scene, DATA, renderer) {
         else b.tri(P(i), P(k), P(j), col);
       }
     }
-    const m = new THREE.Mesh(b.geometry(), groundMat);
+    // Mottling: low-frequency world-space noise darkens/greens some patches and bleaches others to straw
+    const areaMat = groundMat.clone();
+    areaMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vAreaXZ;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvAreaXZ = (modelMatrix * vec4(position, 1.0)).xz;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>
+varying vec2 vAreaXZ;
+float aHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float aNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(aHash(i), aHash(i + vec2(1, 0)), f.x), mix(aHash(i + vec2(0, 1)), aHash(i + vec2(1, 1)), f.x), f.y);
+}`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float n = aNoise(vAreaXZ / 23.0) * 0.6 + aNoise(vAreaXZ / 7.0) * 0.4;
+          float dry = smoothstep(0.55, 0.85, aNoise(vAreaXZ / 41.0 + 13.0));
+          diffuseColor.rgb *= 0.86 + n * 0.24;
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.22, 1.08, 0.78), dry * 0.55);
+        }`);
+    };
+    areaMat.customProgramCacheKey = () => 'area-mottle';
+    const m = new THREE.Mesh(b.geometry(), areaMat);
     m.receiveShadow = true;
     group.add(m);
   }
+
+  // --- CBD core paving and the open plots between buildings (js/lots.js) ------------------------------------------
+  const lotStats = buildLots(group, DATA, renderer);
 
   // --- junctions: where markings stop and zebra crossings go ----------------------------------------------------------
   const G = DATA.graph;
@@ -355,20 +385,24 @@ export function buildWorld(scene, DATA, renderer) {
     for (const road of DATA.roads) {
       const rank = ROAD_RANK[road.k] || 0;
       if (rank < 2) continue;
-      const spacing = rank >= 4 ? 38 : 55;
-      let acc = r() * spacing, side = 1;
+      // CBD core: a lamp every ~26 m on each side, staggered across wider roads; sparser out in the Avenues
+      const wide = road.w >= 9.5;
+      let acc = r() * 20, side = 1;
       for (let i = 2; i < road.p.length; i += 2) {
         const ax = road.p[i - 2], az = road.p[i - 1], bx = road.p[i], bz = road.p[i + 1];
         const len = Math.hypot(bx - ax, bz - az);
         const nx = (bz - az) / (len || 1), nz = -(bx - ax) / (len || 1);
-        for (; acc < len; acc += spacing) {
+        while (acc < len) {
           const t = acc / len, off = road.w / 2 + 1.2;
-          const lx = ax + (bx - ax) * t + nx * off * side, lz = az + (bz - az) * t + nz * off * side;
+          const mx = ax + (bx - ax) * t, mz = az + (bz - az) * t;
+          const core = coreWeight(mx, mz) > 0.25;
+          const lx = mx + nx * off * side, lz = mz + nz * off * side;
           // ZESA load-shedding: whole stretches go dark; LED retrofits in the core, old sodium elsewhere
           const on = hash2(Math.floor(lx / 260), Math.floor(lz / 260)) > 0.1 && r() > 0.06;
           const led = r() < 0.15 + coreWeight(lx, lz) * 0.5;
-          lightSpots.push([lx, lz, -nx * side, -nz * side, on, led]);
+          if (!core || !inJunction(lx, lz, 2)) lightSpots.push([lx, lz, -nx * side, -nz * side, on, led]);
           side = -side;
+          acc += core ? (wide ? 13.5 : 26 + r() * 2) : rank >= 4 ? 38 : 55;
         }
         acc -= len;
       }
@@ -421,7 +455,7 @@ export function buildWorld(scene, DATA, renderer) {
     headMat.color.setScalar(night > 0.05 ? 1 + night * 3 : 0.45);
   }
 
-  return { group, streetAt, setNight, lightSpots };
+  return { group, streetAt, setNight, lightSpots, lots: lotStats };
 }
 
 function mergeSimple(geos) {
