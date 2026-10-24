@@ -363,7 +363,11 @@ export function buildWorld(scene, DATA, renderer) {
         const nx = (bz - az) / (len || 1), nz = -(bx - ax) / (len || 1);
         for (; acc < len; acc += spacing) {
           const t = acc / len, off = road.w / 2 + 1.2;
-          lightSpots.push([ax + (bx - ax) * t + nx * off * side, az + (bz - az) * t + nz * off * side, -nx * side, -nz * side]);
+          const lx = ax + (bx - ax) * t + nx * off * side, lz = az + (bz - az) * t + nz * off * side;
+          // ZESA load-shedding: whole stretches go dark; LED retrofits in the core, old sodium elsewhere
+          const on = hash2(Math.floor(lx / 260), Math.floor(lz / 260)) > 0.18 && r() > 0.08;
+          const led = r() < 0.15 + coreWeight(lx, lz) * 0.5;
+          lightSpots.push([lx, lz, -nx * side, -nz * side, on, led]);
           side = -side;
         }
         acc -= len;
@@ -375,20 +379,23 @@ export function buildWorld(scene, DATA, renderer) {
   const armGeo = new THREE.BoxGeometry(0.1, 0.1, 1.6).translate(0, 7.9, 0.8);
   const headGeo = new THREE.BoxGeometry(0.35, 0.14, 0.7).translate(0, 7.82, 1.5);
   const poles = new THREE.InstancedMesh(mergeSimple([poleGeo, armGeo]), new THREE.MeshStandardMaterial({ color: '#6d6f70', roughness: 0.6, metalness: 0.4 }), nL);
-  const headMat = new THREE.MeshBasicMaterial({ color: '#ffd9a0' });
+  const headMat = new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false });
   const heads = new THREE.InstancedMesh(headGeo, headMat, nL);
   const glowTex = radialTexture();
   const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, color: '#ffb766', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
   const glows = new THREE.InstancedMesh(new THREE.PlaneGeometry(16, 16).rotateX(-Math.PI / 2), glowMat, nL);
   {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
-    lightSpots.forEach(([x, z, dx, dz], i) => {
+    const hc = new THREE.Color();
+    lightSpots.forEach(([x, z, dx, dz, on, led], i) => {
+      heads.setColorAt(i, on ? hc.set(led ? '#e6eeff' : '#ffb15e') : hc.set('#222222'));
       const y = groundY(x, z);
       q.setFromAxisAngle(up, Math.atan2(dx, dz));
       m.compose(new THREE.Vector3(x, y, z), q, one);
       poles.setMatrixAt(i, m);
       heads.setMatrixAt(i, m);
       m.makeTranslation(x + dx * 1.5, y + 0.4, z + dz * 1.5);
+      if (!on) m.makeScale(0, 0, 0);
       glows.setMatrixAt(i, m);
     });
   }
@@ -410,11 +417,11 @@ export function buildWorld(scene, DATA, renderer) {
   }
 
   function setNight(night) {
-    glowMat.opacity = night * 0.8;
-    headMat.color.set(night > 0.05 ? '#ffe2b0' : '#8d8a84').multiplyScalar(night > 0.05 ? 1.5 + night * 2 : 1);
+    glowMat.opacity = night * 0.35; // the real light pools come from features/lighting.js; this is just haze
+    headMat.color.setScalar(night > 0.05 ? 1 + night * 3 : 0.45);
   }
 
-  return { group, streetAt, setNight };
+  return { group, streetAt, setNight, lightSpots };
 }
 
 function mergeSimple(geos) {
