@@ -2,9 +2,11 @@
 // CBD junctions, council litter bins, kombi/bus shelters on the main roads, phone booths and airtime vendors'
 // umbrellas at corners, bollards and planters on First Street Mall, guard huts at big blocks and satellite dishes
 // (rooftop and wall-mounted, all aimed north-east at the equatorial arc). Spots for huts and dishes come from
-// buildings.spots.
+// buildings.spots. The dense kerbside layer (painted kerbs, hydrants, meters, ZESA boxes, road signs, tuckshops, ATMs,
+// scaffolding, overhead lines) lives in street-clutter.js.
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Grid, segDist, coreWeight, rng, groundY } from '../util.js';
+import { buildClutter } from './street-clutter.js';
 
 const PAVE = 0.14, MALL = 0.22;
 const RANK = { trunk: 6, primary: 5, secondary: 4, tertiary: 3, trunk_link: 3, primary_link: 3, secondary_link: 3, residential: 2, unclassified: 2, pedestrian: 1, service: 0 };
@@ -26,23 +28,36 @@ function parts(list) {
 }
 const T = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
 
+// One material per kind; big sets are split into ~1.3 km tiles, each with its own instance bounding sphere, so the
+// camera and shadow frusta can skip the parts of town that aren't in view
 function instanced(scene, geo, items, opts = {}) {
   if (!items.length) return null;
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.rough ?? 0.7, metalness: opts.metal ?? 0.1, side: opts.side ?? THREE.FrontSide });
-  const mesh = new THREE.InstancedMesh(geo, mat, items.length);
+  const TILE = 1300, tiles = new Map();
+  if (items.length > 300) for (const it of items) {
+    const k = Math.floor(it.x / TILE) * 1000 + Math.floor(it.z / TILE);
+    (tiles.get(k) || tiles.set(k, []).get(k)).push(it);
+  }
+  else tiles.set(0, items);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
-  items.forEach((it, i) => {
-    q.setFromEuler(e.set(it.rx || 0, it.yaw || 0, 0, 'YXZ'));
-    m.compose(p.set(it.x, it.y, it.z), q, s.setScalar(it.s || 1));
-    mesh.setMatrixAt(i, m);
-    if (it.c) mesh.setColorAt(i, c.set(it.c));
-  });
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.castShadow = !!opts.shadow;
-  mesh.receiveShadow = true;
-  mesh.frustumCulled = false;
-  scene.add(mesh);
-  return mesh;
+  let first = null;
+  for (const list of tiles.values()) {
+    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((it, i) => {
+      q.setFromEuler(e.set(it.rx || 0, it.yaw || 0, 0, 'YXZ'));
+      m.compose(p.set(it.x, it.y, it.z), q, s.setScalar(it.s || 1));
+      mesh.setMatrixAt(i, m);
+      if (it.c) mesh.setColorAt(i, c.set(it.c));
+    });
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = !!opts.shadow;
+    mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+    mesh.userData.fur = 1;
+    scene.add(mesh);
+    first ||= mesh;
+  }
+  return first;
 }
 
 // Street-name blades: one canvas of names, one merged mesh of double-sided quads
@@ -188,6 +203,7 @@ export default {
       tex.anisotropy = ctx.renderer.capabilities.getMaxAnisotropy();
       const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, metalness: 0.1 }));
       mesh.receiveShadow = true;
+      mesh.userData.fur = 1;
       scene.add(mesh);
     }
 
@@ -376,7 +392,10 @@ export default {
       [new THREE.CylinderGeometry(0.03, 0.03, 0.6, 5), '#666666', T(0, 0.3, -0.1)],
     ]), dishes, { rough: 0.5, metal: 0.2, side: THREE.DoubleSide });
 
-    console.log(`[harare] furniture: ${posts.length} street-name posts, ${bins.length} bins, ${shelters.length} shelters, ${booths.length} booths, ${umbrellas.length} airtime umbrellas, ${bollards.length} bollards, ${planters.length} planters, ${huts.length} guard huts, ${dishes.length} dishes`);
+    // The dense layer: corners, kerbside clutter, kiosks, ATMs, scaffolding, overhead lines (street-clutter.js)
+    const clutter = buildClutter(ctx, { parts, T, instanced, okPave, take, free, kerbGap, junctions, blocked, r });
+
+    console.log(`[harare] furniture: ${posts.length} street-name posts, ${bins.length} bins, ${shelters.length} shelters, ${booths.length} booths, ${umbrellas.length} airtime umbrellas, ${bollards.length} bollards, ${planters.length} planters, ${huts.length} guard huts, ${dishes.length} dishes; ${clutter}`);
   },
   update() {},
 };

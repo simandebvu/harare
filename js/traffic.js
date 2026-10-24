@@ -11,6 +11,7 @@ import { createFigures } from './figures.js';
 import { createRankLights } from './rank-lights.js';
 import { STREET } from './street.js';
 import { rankLayout } from './ranks.js';
+import { createRobots } from './robots.js';
 
 const SPEED = { trunk: 16, primary: 14, secondary: 13, tertiary: 11, residential: 8.5, unclassified: 8, living_street: 5 };
 const RANK = { trunk: 6, primary: 5, secondary: 4, tertiary: 3, residential: 2, unclassified: 2 };
@@ -209,42 +210,8 @@ export function createTraffic(scene, DATA, count = 650) {
   }
   const rankLights = createRankLights(scene, rankList);
 
-  // Robot heads: a dark housing per approach axis per junction, with one lamp (red / amber / green) lit and moved
-  // to its slot whenever the phase changes. Lamps poke through both faces so they read from either direction.
-  const lightList = [...lights.entries()];
-  const nHeads = lightList.length * 2;
-  const housings = new THREE.InstancedMesh(new THREE.BoxGeometry(0.42, 1.25, 0.42), new THREE.MeshStandardMaterial({ color: '#1d1f21', roughness: 0.6 }), nHeads);
-  const lampBox = new THREE.BoxGeometry(0.5, 0.3, 0.3);
-  const heads = new THREE.InstancedMesh(lampBox, new THREE.MeshBasicMaterial({ toneMapped: false }), nHeads);
-  const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.08, 0.1, 3.6, 6).translate(0, 1.8, 0), new THREE.MeshStandardMaterial({ color: '#2d2f31' }), nHeads);
-  const headPos = new Float32Array(nHeads * 3);
-  {
-    const m = new THREE.Matrix4();
-    lightList.forEach(([, L], i) => {
-      const o = L.w / 2 + 1.6;
-      const spots = [[L.x + o, L.z - o], [L.x - o, L.z + o]];
-      spots.forEach(([x, z], k) => {
-        const y = groundY(x, z) + 0.14;
-        m.makeTranslation(x, y, z);
-        poles.setMatrixAt(i * 2 + k, m);
-        m.makeTranslation(x, y + 4.1, z);
-        housings.setMatrixAt(i * 2 + k, m);
-        headPos.set([x, y + 4.1, z], (i * 2 + k) * 3);
-      });
-    });
-  }
-  housings.castShadow = poles.castShadow = true;
-  scene.add(heads, housings, poles);
-  const COLORS = [new THREE.Color(0.1, 2.2, 0.5), new THREE.Color(2.4, 1.3, 0.05), new THREE.Color(2.6, 0.1, 0.05)];
-  const LAMP_Y = [-0.4, 0, 0.4]; // green bottom, amber middle, red top
-  const lastSig = new Int8Array(nHeads).fill(-1);
-  const lampM = new THREE.Matrix4();
-  const setLamp = (h, sig) => {
-    // axis 0 heads face traffic moving east-west (lamp long along x), axis 1 north-south
-    lampM.makeRotationY((h % 2) * Math.PI / 2).setPosition(headPos[h * 3], headPos[h * 3 + 1] + LAMP_Y[sig], headPos[h * 3 + 2]);
-    heads.setMatrixAt(h, lampM);
-    heads.setColorAt(h, COLORS[sig]);
-  };
+  // Robots: poles, signal heads, mast arms and pedestrian heads (js/robots.js), lit from signal() each frame
+  const robots = createRobots(scene, { G, edges, lights, signal });
 
   // --- simulation --------------------------------------------------------------------------------------------------------
   const tmpS = {};
@@ -415,22 +382,7 @@ export function createTraffic(scene, DATA, count = 650) {
     crew.commit(time);
     rankLights.update(nightness);
 
-    let dirty = false;
-    for (let i = 0; i < lightList.length; i++) {
-      const L = lightList[i][1];
-      for (let k = 0; k < 2; k++) {
-        const s = signal(L, k, time);
-        if (s !== lastSig[i * 2 + k]) {
-          lastSig[i * 2 + k] = s;
-          setLamp(i * 2 + k, s);
-          dirty = true;
-        }
-      }
-    }
-    if (dirty) {
-      heads.instanceMatrix.needsUpdate = true;
-      if (heads.instanceColor) heads.instanceColor.needsUpdate = true;
-    }
+    robots.update(time, nightness);
   }
 
   return { update, cars, lightCount: lights.size, parked: slots.length, renderer: R, crew };
