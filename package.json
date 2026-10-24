@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "serve": "python3 -m http.server 8765",
+    "serve": "python3 tools/serve.py 8765",
     "data": "node tools/build-data.mjs",
     "shot": "node tools/shot.mjs"
   },
