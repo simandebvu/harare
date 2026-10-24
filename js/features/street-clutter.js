@@ -287,8 +287,9 @@ export function buildClutter(ctx, H) {
               if (r() < 0.35) {
                 if (!okPave(x, z, 0.3, 0.3, 1.2)) continue;
                 take(x, z, 0.45);
-                L.signRect.push({ x, y, z, yaw: faceRoad + Math.PI / 2 });
-                face(x + Math.sin(faceRoad + Math.PI / 2) * 0.075, y + 2.45, z + Math.cos(faceRoad + Math.PI / 2) * 0.075, faceRoad + Math.PI / 2, 0.9, 0.45, 'marshal');
+                const my = sd > 0 ? Math.atan2(-dx, -dz) : Math.atan2(dx, dz); // faces the traffic on this side
+                L.signRect.push({ x, y, z, yaw: my });
+                face(x + Math.sin(my) * 0.075, y + 2.45, z + Math.cos(my) * 0.075, my, 0.9, 0.45, 'marshal');
                 continue;
               }
               for (let m = 0; m < 3; m++) {
