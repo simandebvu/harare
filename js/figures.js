@@ -1,5 +1,6 @@
 // js/figures.js — every person in the city, as two instanced meshes (near and far detail) animated on the GPU.
-// Bodies are smooth lofts (torso, limbs with elbows and knees, hands, shoes, a head with a nose and ears) skinned to a
+// Bodies are smooth lofts (torso, limbs with elbows and knees, hands, shoes; the sculpted head, painted face and hair
+// styles live in js/figure-head.js) skinned to a
 // tiny 13-bone rig: each vertex carries two bones and a weight. The vertex shader poses the rig per instance from a gait
 // phase: two-bone IK plants each foot on a stance path that slides back at walking speed, the pelvis bobs, sways and
 // rolls over the stance leg, the chest counter-rotates and the arms swing against the legs. Standing figures shift
@@ -9,6 +10,7 @@
 import * as THREE from 'three';
 import { MeshKit } from './meshkit.js';
 import { NIGHT_GLSL, nightUniforms } from './nightglow.js';
+import { headParts, hairKind, HEAD_COMMON, HEAD_VERT, HEAD_FRAG } from './figure-head.js';
 
 // Parts (match the shader)
 export const PART = { TORSO: 1, LEG: 2, SHOE: 3, ARM: 4, HAND: 5, HEAD: 6, HAIR: 7, DOEK: 8, BRAIDS: 9, CAP: 10, SKIRT: 11, BASIN: 12, CONTENT: 13, BUNDLE: 14, SBAG: 15, HBAG: 16, PACK: 17 };
@@ -63,9 +65,9 @@ const TORSO = [
   [1.37, 0.188, 0.11, 0.095, -0.002, 0.165, 0.1, 0.088],
   [1.42, 0.18, 0.095, 0.088, -0.01, 0.158, 0.085, 0.08],
   [1.46, 0.14, 0.08, 0.078, -0.014, 0.122, 0.072, 0.07],
-  [1.49, 0.075, 0.058, 0.06, -0.016, 0.065, 0.052, 0.054],
-  [1.53, 0.052, 0.05, 0.052, -0.014, 0.046, 0.045, 0.047],
-  [1.575, 0.05, 0.048, 0.05, -0.01, 0.044, 0.043, 0.045],
+  [1.49, 0.08, 0.06, 0.062, -0.016, 0.07, 0.054, 0.056],
+  [1.53, 0.057, 0.053, 0.057, -0.014, 0.05, 0.047, 0.051],
+  [1.575, 0.054, 0.05, 0.054, -0.01, 0.048, 0.045, 0.049],
 ];
 const torsoSkin = (y) => (y <= 1.0 ? [B.P, B.C, 0] : y < 1.1 ? [B.P, B.C, 0.4] : y < 1.18 ? [B.P, B.C, 0.85] : y < 1.52 ? [B.C, B.H, 0] : y < 1.56 ? [B.C, B.H, 0.3] : [B.C, B.H, 0.8]);
 // Leg: [y, rx, rzF, rzB, cz, female extra radius]
@@ -129,45 +131,6 @@ const HAND = [
   [0.64, 0.021, 0.041],
   [0.69, 0.016, 0.032],
   [0.72, 0.008, 0.015],
-];
-// Head: [y, rx, rzF, rzB, cz, nose, ear]
-const HEAD = [
-  [1.545, 0.02, 0.022, 0.02, 0.04, 0, 0],
-  [1.56, 0.05, 0.052, 0.04, 0.028, 0, 0],
-  [1.585, 0.068, 0.078, 0.062, 0.01, 0.004, 0],
-  [1.615, 0.078, 0.092, 0.084, 0.0, 0.012, 0.008],
-  [1.645, 0.083, 0.097, 0.095, -0.004, 0.016, 0.016],
-  [1.68, 0.085, 0.093, 0.1, -0.01, 0.002, 0.006],
-  [1.712, 0.08, 0.083, 0.096, -0.014, 0, 0],
-  [1.738, 0.066, 0.066, 0.08, -0.016, 0, 0],
-  [1.755, 0.042, 0.042, 0.052, -0.016, 0, 0],
-  [1.763, 0.012, 0.012, 0.014, -0.016, 0, 0],
-];
-const SHELL = [
-  [1.66, 0.092, 0.1, 0.108, -0.012],
-  [1.695, 0.104, 0.104, 0.124, -0.016],
-  [1.735, 0.103, 0.096, 0.12, -0.02],
-  [1.77, 0.088, 0.08, 0.102, -0.022],
-  [1.795, 0.06, 0.055, 0.072, -0.022],
-  [1.807, 0.018, 0.016, 0.022, -0.022],
-];
-const BRAID_SHELL = SHELL.map(([y, rx, f, b, cz]) => [y - 0.004, rx * 0.93, f * 0.95, b * 0.95, cz]);
-const DOEK = [
-  [1.665, 0.093, 0.101, 0.11, -0.012],
-  [1.7, 0.102, 0.105, 0.125, -0.022],
-  [1.738, 0.106, 0.099, 0.134, -0.034],
-  [1.775, 0.1, 0.086, 0.13, -0.048],
-  [1.808, 0.084, 0.068, 0.11, -0.058],
-  [1.832, 0.056, 0.045, 0.078, -0.064],
-  [1.844, 0.018, 0.016, 0.026, -0.064],
-];
-const CAPR = [
-  [1.67, 0.091, 0.099, 0.104, -0.012],
-  [1.7, 0.094, 0.098, 0.108, -0.014],
-  [1.733, 0.089, 0.088, 0.099, -0.016],
-  [1.758, 0.07, 0.068, 0.08, -0.016],
-  [1.773, 0.036, 0.035, 0.042, -0.016],
-  [1.778, 0.006, 0.006, 0.007, -0.016],
 ];
 // Skirt / wrapper: [y, rx, rzF, rzB, cz, female extra]
 const SKIRT = [
@@ -258,41 +221,8 @@ function figureGeometry(k, detail) {
       }
     }
   }
-  // Head (nose and ears are bumps on the rings)
-  {
-    const n = N ? 16 : 8;
-    const rows = thin(HEAD, N);
-    const P = rows.map(([y, rx, f, b, cz, nose, ear]) =>
-      ring(y, rx, f, b, cz, n, 0, N ? (a) => nose * lobe(a, Math.PI / 2, 0.22) + ear * (lobe(a, 0, 0.2) + lobe(a, Math.PI, 0.2)) : null)
-    );
-    k.loft(P, null, { closed: true, capStart: true, capEnd: true, vattrs: () => V(PART.HEAD, [B.H, B.C, 0]) });
-  }
-  const shell = (rows, part, n, skin = () => [B.H, B.C, 0]) => {
-    const R = thin(rows, N);
-    k.loft(R.map(([y, rx, f, b, cz]) => ring(y, rx, f, b, cz, n)), null, { closed: true, capStart: true, capEnd: true, vattrs: (i) => V(part, skin(i)) });
-  };
-  shell(SHELL, PART.HAIR, N ? 16 : 8);
-  shell(BRAID_SHELL, PART.BRAIDS, N ? 16 : 8);
-  shell(DOEK, PART.DOEK, N ? 16 : 8);
-  shell(CAPR, PART.CAP, N ? 14 : 8);
-  {
-    // doek knot / cap brim
-    const M = new THREE.Matrix4();
-    if (N) k.geo(new THREE.SphereGeometry(1, 8, 6), V(PART.DOEK, [B.H, B.C, 0]), M.makeScale(0.05, 0.035, 0.04).setPosition(0, 1.8, 0.045));
-    const brim = [];
-    for (const y of [1.672, 1.682]) {
-      const r = ring(y, 0.092, 0.17, 0.02, 0.0, N ? 12 : 6);
-      brim.push(r.map(([x, yy, z]) => [x, yy - Math.max(0, z) * 0.12, z]));
-    }
-    k.loft(brim, null, { closed: true, capStart: true, capEnd: true, vattrs: () => V(PART.CAP, [B.H, B.C, 0]) });
-  }
-  // Braids hanging down the back
-  {
-    const n = N ? 10 : 6;
-    const path = [[1.72, -0.085, 0.07, 0.03], [1.62, -0.112, 0.085, 0.032], [1.52, -0.118, 0.095, 0.03], [1.42, -0.11, 0.1, 0.026], [1.36, -0.1, 0.09, 0.02]];
-    const P = path.map(([y, z, rx, rz]) => ring(y, rx, rz, rz, z, n));
-    k.loft(P, null, { closed: true, capEnd: true, vattrs: (i) => V(PART.BRAIDS, i < 2 ? [B.H, B.C, 0] : [B.C, B.H, 0.2]) });
-  }
+  // Head, ears, hair shell, cap, puff / bun / knot, hanging strands (js/figure-head.js)
+  headParts(k, detail, V, PART, B);
   // Skirt / dress / wrapper: sides follow their thigh, the middle splits the difference
   {
     const n = N ? 16 : 8;
@@ -333,13 +263,13 @@ function figureGeometry(k, detail) {
 }
 
 function buildGeometry() {
-  const attrs = { aSkin: 4, aFem: 3, aAux: 1 };
+  const attrs = { aSkin: 4, aFem: 3, aAux: 1, aHx: 4, aRoot: 3 };
   const kn = new MeshKit(attrs);
   figureGeometry(kn, true);
-  const nearIdx = kn.idx.length;
+  const nearIdx = kn.idx.length, proxyIdx = kn.proxyIdx;
   figureGeometry(kn, false); // the far body doubles as the near mesh's shadow stand-in
   const near = kn.build();
-  near.userData.ranges = { near: nearIdx, shadow: kn.idx.length - nearIdx };
+  near.userData.ranges = { near: nearIdx, shadow: kn.idx.length - nearIdx, proxy: proxyIdx };
   const kf = new MeshKit(attrs);
   figureGeometry(kf, false);
   const far = kf.build();
@@ -362,7 +292,8 @@ flat varying float vId;
 flat varying float vPart;
 varying vec3 vBind;
 varying float vAux;
-
+${HEAD_COMMON}
+${HEAD_VERT}
 vec4 fData(int k) { return texelFetch(uData, ivec2(k, int(iPose.x + 0.5)), 0); }
 void rFwd(inout vec3 p, inout vec3 n, vec3 o, float a) { // swing toward +z about x
   float c = cos(a), s = sin(a);
@@ -386,7 +317,8 @@ void rYaw(inout vec3 p, inout vec3 n, vec3 o, float a) { // about y: +z swings t
 vec3 gLegL, gLegR; // thigh forward, knee flex, foot pitch (relative)
 vec4 gArmL, gArmR; // flex, abduction, inward twist, elbow
 vec3 gPel; // shift x, hip height, -
-float gRoll, gYaw, gChestYaw, gLean, gHeadYaw, gHeadNod, gHeadScale, gBodyLean;
+float gRoll, gYaw, gChestYaw, gLean, gHeadYaw, gHeadNod, gBodyLean;
+vec3 gHeadScale;
 
 // foot path for one leg at gait phase p: (forward offset, lift, pitch)
 vec3 footPath(float p, float A, float lift) {
@@ -465,7 +397,7 @@ void figRig(float fem, float load, float child) {
   float look = (1.0 - step(0.5, load)) * idle;
   gHeadYaw = look * 0.45 * sin(uTime * 0.21 + seed * 31.0) * smoothstep(0.2, 0.7, sin(uTime * 0.13 + seed * 17.0) * 0.5 + 0.5);
   gHeadNod = -0.03 * lift + 0.08 * sit;
-  gHeadScale = mix(1.0, 1.16, child);
+  gHeadScale = vec3(mix(1.0, 1.16, child));
   gBodyLean = iPose.w;
   // arms: swing against the legs, then idle styles, then gestures
   float sw = 0.42 * lift;
@@ -562,11 +494,8 @@ vec3 figPose(inout vec3 n) {
   float part = aSkin.w;
   vec3 p = position + aFem * f0.x;
   float hide = 0.0;
-  float hair = f0.z, load = f0.y, bag = f0.w;
-  if (part == 7.0) hide = (abs(hair - 1.0) < 0.1) ? 0.0 : 1.0;
-  else if (part == 8.0) hide = (abs(hair - 2.0) < 0.1) ? 0.0 : 1.0;
-  else if (part == 9.0) hide = (abs(hair - 3.0) < 0.1) ? 0.0 : 1.0;
-  else if (part == 10.0) hide = (abs(hair - 4.0) < 0.1) ? 0.0 : 1.0;
+  float load = f0.y, bag = f0.w;
+  if (part > 6.5 && part < 10.5) hide = 0.0;
   else if (part == 11.0) {
     hide = step(f1.x, 0.01);
     p.y = 1.045 - (1.045 - p.y) * (1.045 - f1.x) / 0.845;
@@ -580,8 +509,22 @@ vec3 figPose(inout vec3 n) {
   vPart = part;
   vBind = p;
   vAux = aAux;
+  vHx = vec4(0.0);
+  float seed = fData(4).a;
+  if (part > 5.5 && part < 10.5) {
+    vec4 f6 = fData(6), f7 = fData(7);
+    if (hairVert(part, f6.a, f0.x, seed, p, n)) hide = 1.0;
+    else if (part == 6.0 && aAux < 0.5) { // per-person jaw and nose width, beard volume
+      p.x *= 1.0 + (hh(seed, 11.0) - 0.5) * 0.12 * smoothstep(1.625, 1.55, p.y);
+      float nm = smoothstep(0.035, 0.01, abs(p.x)) * smoothstep(0.06, 0.085, p.z) * smoothstep(1.585, 1.597, p.y) * smoothstep(1.64, 1.615, p.y);
+      p.x *= 1.0 + (hh(seed, 12.0) - 0.3) * 0.3 * nm;
+      if (f7.a > 3.5) p += n * 0.0035 * beardMask(vBind, f7.a);
+    }
+    if (part != 6.0) vBind = p;
+  }
   if (hide > 0.5) return vec3(0.0);
   figRig(f0.x, load, f1.y);
+  gHeadScale *= vec3(1.0 + 0.05 * (hh(seed, 13.0) - 0.5), 1.0 + 0.05 * (hh(seed, 14.0) - 0.5), 1.0 + 0.04 * (hh(seed, 15.0) - 0.5));
   vec3 na = n, nb = n;
   vec3 pa = figBone(aSkin.x, p, na);
   vec3 pb = aSkin.z > 0.001 ? figBone(aSkin.y, p, nb) : pa;
@@ -597,6 +540,17 @@ flat varying float vPart;
 varying vec3 vBind;
 varying float vAux;
 vec4 pd(int k) { return texelFetch(uData, ivec2(k, int(vId + 0.5)), 0); }
+float gSkin = 0.0, gRough = 0.82, gBump = 0.0; // subsurface weight, roughness and bump height for this fragment
+${HEAD_COMMON}
+${HEAD_FRAG}
+// bump from a height field via screen derivatives (three's perturbNormalArb)
+vec3 figPerturb(vec3 pos, vec3 nrm, vec2 dH, float fd) {
+  vec3 sx = dFdx(pos), sy = dFdy(pos);
+  vec3 r1 = cross(sy, nrm), r2 = cross(nrm, sx);
+  float det = dot(sx, r1) * fd;
+  vec3 grad = sign(det) * (dH.x * r1 + dH.y * r2);
+  return normalize(abs(det) * nrm - grad);
+}
 float hsh(float x) { return fract(sin(x * 91.3458) * 47453.5453); }
 vec3 figColor() {
   float part = vPart;
@@ -605,7 +559,7 @@ vec3 figColor() {
   float outfit = f1.z;
   vec3 skin = pd(4).rgb;
   if (part == 1.0) { // torso: neck, shirt, trousers
-    if (b.y > 1.478 - (outfit == 1.0 ? 0.01 : 0.0)) return skin;
+    if (b.y > 1.478 - (outfit == 1.0 ? 0.01 : 0.0)) { gSkin = 1.0; gRough = 0.6; return skin; }
     if (b.y < 1.0 && f1.x < 0.01) {
       vec3 bc = pd(3).rgb;
       if (b.y > 0.975 && outfit != 3.0) bc *= 0.35; // belt
@@ -652,36 +606,36 @@ vec3 figColor() {
   if (part == 4.0) { // arm: sleeve then skin
     vec4 top = pd(2);
     if (outfit == 6.0 && vAux < top.a && vAux > top.a - 0.03) return pd(8).rgb; // kit sleeve cuff
-    return vAux < top.a ? top.rgb : skin;
+    if (vAux < top.a) return top.rgb;
+    gSkin = 1.0;
+    gRough = 0.6;
+    return skin;
   }
   if (part == 2.0) { // leg
-    if (f1.x > 0.01) return skin;
+    if (f1.x > 0.01) { gSkin = 1.0; gRough = 0.6; return skin; }
     vec4 bot = pd(3);
     vec3 c = vAux > bot.a ? bot.rgb : skin;
+    if (vAux <= bot.a) gSkin = 1.0;
     if (outfit == 3.0 && abs(vAux - 0.32) < 0.016) c = vec3(0.8, 0.8, 0.75);
     return c;
   }
   if (part == 3.0) return pd(7).rgb;
-  if (part == 5.0) return skin * 1.08;
-  if (part == 6.0) { // head: cropped hair, eyes
-    vec4 f0 = pd(0);
-    vec3 c = skin;
-    if (f0.z < 0.5 || f0.z > 4.5) {
-      float line = mix(1.615, 1.705, smoothstep(-0.04, 0.06, b.z)) + (f0.z > 4.5 ? 0.02 : 0.0);
-      if (b.y > line) c = mix(skin, pd(6).rgb, f0.z > 4.5 ? 0.55 : 0.92);
-    }
-    if (b.z > 0.06 && abs(b.y - 1.656) < 0.0075 && abs(abs(b.x) - 0.032) < 0.012) c *= 0.3;
-    return c;
+  if (part == 5.0) { gSkin = 1.0; gRough = 0.58; return skin * 1.08; }
+  if (part > 5.5 && part < 9.5) { // head and face, hair shell, puff / bun / knot, strands (js/figure-head.js)
+    vec4 h6 = pd(6), f0 = pd(0), a5 = pd(5);
+    float K = h6.a, seed = pd(4).a;
+    if (part == 6.0) return headColor(skin, h6.rgb, K, f0.x, pd(7).a, a5.a, seed);
+    if (part == 7.0) return shellColor(skin, h6.rgb, a5.rgb, K, seed, seed);
+    if (part == 8.0) return ballColor(h6.rgb, a5.rgb, K, seed, seed);
+    return strandColor(h6.rgb, K, seed);
   }
-  if (part == 7.0) return pd(6).rgb;
-  if (part == 9.0) return pd(6).rgb * (0.65 + 0.35 * step(0.45, fract(atan(b.x, b.z + 0.02) * 14.0)));
-  if (part == 8.0) { // doek: printed cloth
-    vec3 a = pd(5).rgb;
-    float s = pd(4).a;
-    float pat = step(0.55, fract((b.y * 1.3 + b.x * (s - 0.5)) * 38.0));
-    return mix(a, a * 0.45 + vec3(0.35), pat * 0.5);
+  if (part == 10.0) { // cap: panel seams, a button on top
+    float az = atan(b.x, b.z + 0.012);
+    float seam = smoothstep(0.012, 0.0, abs(fract(az / 1.0472 + 0.5) - 0.5)) * step(vAux, 0.5) * step(1.7, b.y);
+    float btn = smoothstep(0.008, 0.005, length(b.xz - vec2(0.0, -0.016))) * step(1.765, b.y);
+    gRough = 0.75;
+    return pd(5).rgb * (1.0 - 0.3 * seam) * (1.0 - 0.25 * btn);
   }
-  if (part == 10.0) return pd(5).rgb;
   if (part == 11.0) { // skirt, dress or zambia wrapper
     vec3 c = pd(3).rgb;
     if (f1.w > 0.5) {
@@ -699,6 +653,19 @@ vec3 figColor() {
   return pd(8).rgb;
 }
 `;
+
+// Warm wrap lighting on skin: light reaching past the terminator, reddened as if scattered under the skin
+const SKIN_LIGHT = (() => {
+  const src = THREE.ShaderChunk.lights_physical_pars_fragment;
+  const a = 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );';
+  if (!src.includes(a)) return src;
+  return src.replace(
+    a,
+    `float nlW = dot( geometryNormal, directLight.direction );
+	vec3 sssW = gSkin * max( 0.0, ( nlW + 0.55 ) / 1.55 - dotNL ) * vec3( 0.8, 0.32, 0.2 ) * directLight.color;
+	reflectedLight.directDiffuse += ( irradiance + sssW ) * BRDF_Lambert( material.diffuseColor );`
+  );
+})();
 
 // --- instances ---------------------------------------------------------------------------------------------------------
 export function createFigures(scene, capacity, opts = {}) {
@@ -722,12 +689,15 @@ export function createFigures(scene, capacity, opts = {}) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\n${FRAG}\n${NIGHT_GLSL}`)
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= figColor();')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = gRough;')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n{ vec2 dH = vec2(dFdx(gBump), dFdy(gBump)); if (dot(dH, dH) > 0.0) normal = figPerturb(-vViewPosition, normal, dH, faceDirection); }')
+      .replace('#include <lights_physical_pars_fragment>', SKIN_LIGHT)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nightGlow(vNgWorld) * diffuseColor.rgb;');
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vNgWorld;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvNgWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;');
   };
-  mat.customProgramCacheKey = () => 'harare-figure-v2';
+  mat.customProgramCacheKey = () => 'harare-figure-v3';
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depth.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uTime;
@@ -736,7 +706,7 @@ export function createFigures(scene, capacity, opts = {}) {
       .replace('#include <common>', `#include <common>\n${HEADER}`)
       .replace('#include <begin_vertex>', `vec3 fN = vec3(0.0, 1.0, 0.0);\nvec3 transformed = figPose(fN);`);
   };
-  depth.customProgramCacheKey = () => 'harare-figure-depth-v2';
+  depth.customProgramCacheKey = () => 'harare-figure-depth-v3';
 
   const meshes = [geoN, geoF].map((geo) => {
     const m = new THREE.InstancedMesh(geo, mat, Math.max(1, capacity));
@@ -759,15 +729,17 @@ export function createFigures(scene, capacity, opts = {}) {
     return { m, anim, pose, M: m.instanceMatrix.array, A: anim.array, P: pose.array, E: ext.array, ups: [[m.instanceMatrix, 16], [anim, 4], [pose, 4], [ext, 4]] };
   });
   let cam = null;
-  const { near: nearIdx, shadow } = geoN.userData.ranges;
+  const { near: nearIdx, shadow, proxy } = geoN.userData.ranges;
   geoN.setDrawRange(0, nearIdx);
   const near = meshes[0].m, far = meshes[1].m;
   near.onBeforeShadow = () => geoN.setDrawRange(nearIdx, shadow);
   near.onAfterShadow = () => geoN.setDrawRange(0, nearIdx);
-  // Override-material passes (the AO normal pass) can't pose the rig: skip people there
+  // Override-material passes (the AO normal pass) can't pose the rig. Near people stand in there unposed (body, head
+  // and scalp only, no optional pieces) so ambient occlusion sees roughly their shape instead of the scene behind them,
+  // which otherwise printed the background's occlusion (window grids, branches) onto faces; far people are skipped.
   near.onBeforeRender = (r, s, camera, g, material) => {
     if (camera.isPerspectiveCamera) cam = camera;
-    geoN.setDrawRange(0, material === mat ? nearIdx : 0);
+    geoN.setDrawRange(0, material === mat ? nearIdx : s.overrideMaterial ? proxy : 0);
   };
   far.onBeforeRender = (r, s, camera, g, material) => {
     if (camera.isPerspectiveCamera) cam = camera;
@@ -810,6 +782,10 @@ export function createFigures(scene, capacity, opts = {}) {
       set3(o + 24, L.hair);
       set3(o + 28, L.shoe);
       set3(o + 32, L.bag);
+      const [hk, beard, lips] = hairKind(L);
+      data[o + 27] = hk; // texel 6.a: hair kind
+      data[o + 31] = beard; // texel 7.a
+      data[o + 23] = lips; // texel 5.a
       AN[i * 4] = L.phase || 0;
       AN[i * 4 + 1] = L.freq || 6;
       PO[i * 4] = i;
