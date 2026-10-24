@@ -128,6 +128,12 @@ export function buildTrees(scene, DATA, blocked) {
     if (clear(x, z, 4)) spots.push([x, z, -1]);
   }
 
+  // Stay inside the detailed map box: greater Harare outside it plants its own trees (features/suburbs.js)
+  for (let i = spots.length - 1; i >= 0; i--) {
+    const [x, z] = spots[i];
+    if (x < -2500 || x > 1400 || z < -1800 || z > 1400) spots.splice(i, 1);
+  }
+
   const n = spots.length;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
   const pick = () => {

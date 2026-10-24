@@ -51,7 +51,7 @@ export function createClouds(scene) {
         gl_FragColor = vec4(col, d * 0.92 * fade);
       }`,
   });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000).rotateX(Math.PI / 2), mat);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000).rotateX(Math.PI / 2), mat);
   mesh.position.y = 2400;
   mesh.renderOrder = -1;
   mesh.frustumCulled = false;

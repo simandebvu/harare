@@ -43,7 +43,7 @@ async function init() {
 
   // --- sky, sun, fog ------------------------------------------------------------------------------------------------
   const sky = new Sky();
-  sky.scale.setScalar(10000);
+  sky.scale.setScalar(40000); // a box: keep it larger than the suburbs' horizon (camera far is 45 km)
   sky.renderOrder = -2;
   sky.material.uniforms.turbidity.value = 6;
   sky.material.uniforms.rayleigh.value = 1.2;
@@ -271,6 +271,7 @@ async function init() {
     people.update(dt);
     for (const f of features) f.update?.(dt, ctx);
     clouds.update(dt, camera);
+    sky.position.copy(camera.position); // the sky box travels with you
     trees.update(dt, camera);
 
     // Drop ambient occlusion automatically if the machine can't keep up
