@@ -2,3 +2,4 @@ node_modules/
 .DS_Store
 shots/
 .ref/
+tools/data/osm_suburbs.json

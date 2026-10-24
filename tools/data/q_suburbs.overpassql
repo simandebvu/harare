@@ -1,0 +1,20 @@
+[out:json][timeout:300][maxsize:536870912];
+(
+  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|residential|unclassified|living_street)$"](-17.9430,30.9330,-17.7160,31.1710);
+  way["landuse"](-17.9430,30.9330,-17.7160,31.1710);
+  way["leisure"~"park|golf_course|pitch|stadium|nature_reserve|sports_centre|garden|recreation_ground"](-17.9430,30.9330,-17.7160,31.1710);
+  way["natural"~"water|wood|wetland|scrub|grassland|bare_rock|heath"](-17.9430,30.9330,-17.7160,31.1710);
+  relation["natural"~"water|wood|wetland"](-17.9430,30.9330,-17.7160,31.1710);
+  relation["landuse"](-17.9430,30.9330,-17.7160,31.1710);
+  relation["leisure"~"golf_course|nature_reserve|park"](-17.9430,30.9330,-17.7160,31.1710);
+  way["waterway"~"river|stream"](-17.9430,30.9330,-17.7160,31.1710);
+  way["aeroway"~"runway|taxiway|apron|aerodrome|terminal"](-17.9430,30.9330,-17.7160,31.1710);
+  way["railway"="rail"](-17.9430,30.9330,-17.7160,31.1710);
+  way["amenity"~"school|university|hospital|prison"](-17.9430,30.9330,-17.7160,31.1710);
+  node["place"~"suburb|neighbourhood|quarter|town|village"](-17.9430,30.9330,-17.7160,31.1710);
+  way["building"]["building:levels"~"^([4-9]|[1-9][0-9])$"](-17.9430,30.9330,-17.7160,31.1710);
+  way["building"~"apartments|industrial|warehouse|retail|commercial|hangar|stadium"](-17.9430,30.9330,-17.7160,31.1710);
+);
+out body;
+>;
+out skel qt;
