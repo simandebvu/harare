@@ -365,7 +365,7 @@ export function buildWorld(scene, DATA, renderer) {
           const t = acc / len, off = road.w / 2 + 1.2;
           const lx = ax + (bx - ax) * t + nx * off * side, lz = az + (bz - az) * t + nz * off * side;
           // ZESA load-shedding: whole stretches go dark; LED retrofits in the core, old sodium elsewhere
-          const on = hash2(Math.floor(lx / 260), Math.floor(lz / 260)) > 0.18 && r() > 0.08;
+          const on = hash2(Math.floor(lx / 260), Math.floor(lz / 260)) > 0.1 && r() > 0.06;
           const led = r() < 0.15 + coreWeight(lx, lz) * 0.5;
           lightSpots.push([lx, lz, -nx * side, -nz * side, on, led]);
           side = -side;
