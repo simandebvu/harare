@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { groundY } from './util.js';
-import { vehicleGeometry, lampGeometry } from './vehicles.js';
+import { PlayerKombi } from './player-kombi.js';
 import { Player } from './player.js';
 import { CameraRig } from './cameras.js';
 
@@ -82,16 +82,14 @@ export class Controls {
     this.walk = { x: 30, z: -20, y: 0, vy: 0, vx: 0, vz: 0, yaw: 0, air: false, speed: 0, turn: 0 };
     this.player = new Player(scene);
 
-    // Player kombi: yaw group → lean pivot at axle height → body
-    const body = new THREE.Mesh(vehicleGeometry('kombi'), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.3 }));
-    this.lampMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-    const lamps = new THREE.Mesh(lampGeometry('kombi'), this.lampMat);
-    body.castShadow = true;
-    body.position.y = lamps.position.y = -0.33;
+    // Player kombi: yaw group → lean pivot at axle height → body (the traffic model, material and lamps)
+    this.pk = new PlayerKombi(scene, { color: '#f2f1ec', plate: 17, opt: 1, dirt: 0.2, route: 'MBARE' });
+    const body = this.pk.mesh;
+    body.position.y = -0.33;
     this.kombiBody = body;
     this.kombiLean = new THREE.Group();
     this.kombiLean.position.y = 0.33;
-    this.kombiLean.add(body, lamps);
+    this.kombiLean.add(body);
     this.cockpit = buildCockpit();
     this.cockpit.position.y = -0.33;
     this.cockpit.visible = false;
@@ -100,7 +98,7 @@ export class Controls {
     this.kombi.add(this.kombiLean);
     this.kombi.visible = false;
     scene.add(this.kombi);
-    this.car = { x: 60, z: 75, yaw: -Math.PI / 2, v: 0, vx: 0, vz: 0, vl: 0, steer: 0, yawRate: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, boost: false, hoot: 0, lastV: 0 };
+    this.car = { x: 60, z: 75, yaw: -Math.PI / 2, v: 0, vx: 0, vz: 0, vl: 0, steer: 0, yawRate: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, boost: false, hoot: 0, lastV: 0, brake: 0, ind: 0, indT: 0 };
     this.driven = false;
 
     // Helicopter (free flight)
@@ -346,7 +344,7 @@ export class Controls {
       const c = this.car;
       this.rig.update(dt, this.followTarget('drive', c.x, groundY(c.x, c.z) + 0.22, c.z, c.yaw, Math.abs(c.v)), I);
     }
-    this.updateKombiLamps();
+    this.updateKombiLamps(dt);
   }
 
   followTarget(kind, x, y, z, yaw, speed) {
@@ -514,6 +512,10 @@ export class Controls {
     if (v > vmax) v -= Math.min(v - vmax, 6 * dt); // boost released: settle back
     const hand = I.brake;
     if (hand) v -= Math.sign(v) * Math.min(Math.abs(v), 11 * dt);
+    // Brake lights: footbrake (throttle against the motion), handbrake, or held at a standstill
+    const braking = (thr < 0 && v > 0.5) || (thr > 0 && v < -0.5) || hand || (Math.abs(v) < 0.4 && thr === 0) ? 1 : 0;
+    c.brake += (braking - c.brake) * Math.min(1, dt * 14);
+    c.hand = hand;
 
     // Steering: less lock at speed, quick to centre
     const lock = 0.6 / (1 + Math.abs(v) * 0.075);
@@ -570,6 +572,10 @@ export class Controls {
     this.kombi.rotation.set(0, c.yaw, 0);
     this.kombiLean.rotation.set(c.pitch, 0, c.roll);
     c.hoot = Math.max(0, c.hoot - dt);
+    // Indicators: steering hard flicks them on toward the turn and they keep blinking a moment after
+    const lockNow = 0.6 / (1 + Math.abs(c.v) * 0.075);
+    if (Math.abs(c.steer) > lockNow * 0.45 && Math.abs(c.v) > 0.5) (c.ind = c.steer < 0 ? 1 : -1), (c.indT = 1.2);
+    else if ((c.indT -= dt) <= 0) c.ind = 0;
   }
 
   // Does the kombi overlap a building at (x, z) heading yaw? Probes the leading corners and the sides.
@@ -624,11 +630,18 @@ export class Controls {
     dispatchEvent(new CustomEvent('harare:crash', { detail: { strength } }));
   }
 
-  updateKombiLamps() {
-    if (!this.kombi.visible) return;
-    const c = this.car;
-    // Hooter: flash the lamps (headlights double-flash)
-    const flash = c.hoot > 0 ? (Math.sin(c.hoot * 40) > 0 ? 3 : 0) : 0;
-    this.lampMat.color.setScalar(0.35 + (this.nightness || 0) * 2.2 + flash);
+  updateKombiLamps(dt) {
+    const pk = this.pk;
+    if (!pk.shared && this.traffic) pk.attach(this.traffic);
+    const c = this.car, night = this.nightness || 0, visible = this.kombi.visible;
+    if (!visible) return pk.update(dt, night, 0, 0, 0, 0, c.x, 0, c.z, c.yaw, false);
+    const driving = this.mode === 'drive';
+    // Headlights after dusk while driving (sidelights when parked); the hooter double-flashes them
+    const flash = c.hoot > 0 && Math.sin(c.hoot * 40) > 0 ? 1.4 : 0;
+    const head = Math.max(driving ? (night > 0.18 ? 1 : 0) : 0.1 * night, flash);
+    const brake = driving ? c.brake : 0;
+    // Hazards: handbrake on at a standstill, or parked at the kerb while you're out on foot
+    const ind = !driving || (c.hand && Math.abs(c.v) < 1) ? 2 : c.ind;
+    pk.update(dt, night, head, brake, ind, 0.8 * night, this.kombi.position.x, this.kombi.position.y, this.kombi.position.z, c.yaw, true);
   }
 }

@@ -16,7 +16,7 @@ export const PART = { TORSO: 1, LEG: 2, SHOE: 3, ARM: 4, HAND: 5, HEAD: 6, HAIR:
 const B = { P: 0, C: 1, H: 2, TL: 3, TR: 4, SL: 5, SR: 6, FL: 7, FR: 8, UL: 9, UR: 10, AL: 11, AR: 12 };
 // Hair styles, outfits, bags
 export const HAIR = { CROP: 0, AFRO: 1, DOEK: 2, BRAIDS: 3, CAP: 4, SHAVED: 5 };
-export const OUTFIT = { PLAIN: 0, SUIT: 1, VEST: 2, OVERALLS: 3, PATTERN: 4, SCHOOL: 5 };
+export const OUTFIT = { PLAIN: 0, SUIT: 1, VEST: 2, OVERALLS: 3, PATTERN: 4, SCHOOL: 5, JERSEY: 6 }; // JERSEY: football kit, trim = bag colour
 export const BAG = { NONE: 0, SHOULDER: 1, HAND: 2, PACK: 3 };
 export const IDLE = { HANG: 0, CROSSED: 1, PHONE: 2, HIPS: 3, HANGON: 5 };
 
@@ -355,6 +355,7 @@ attribute vec3 aFem;
 attribute float aAux;
 attribute vec4 iAnim; // phase, freq (rad/s), stride (half stance span, body units), gesture
 attribute vec4 iPose; // id, sit, idle style, lean
+attribute vec4 iExt;  // run (0..1), airborne (0..1), -, -  (zero for the crowd)
 uniform float uTime;
 uniform sampler2D uData;
 flat varying float vId;
@@ -398,6 +399,19 @@ vec3 footPath(float p, float A, float lift) {
   float s = t * t * (3.0 - 2.0 * t);
   return vec3(A * (2.0 * s - 1.0), lift * (0.045 * (1.0 - t) + 0.075 * sin(3.14159 * t)), mix(-0.5, 0.22, smoothstep(0.1, 0.9, t)) * lift);
 }
+// running foot path: short stance (flight phase between footfalls), heel kicked up behind, toe pointed
+const float RUN_ST = 0.28; // keep in step with js/player.js
+vec3 footRun(float p, float A, float lift) {
+  if (p < RUN_ST) {
+    float t = p / RUN_ST;
+    float heel = smoothstep(0.45, 1.0, t);
+    return vec3(A * (1.0 - 2.0 * t), heel * 0.075 * lift, (-heel * 0.75 + (1.0 - smoothstep(0.0, 0.3, t)) * 0.12) * lift);
+  }
+  float t = (p - RUN_ST) / (1.0 - RUN_ST);
+  float s = smoothstep(0.12, 0.95, t);
+  float y = 0.075 * (1.0 - t) + 0.34 * sin(3.14159 * pow(t, 0.7));
+  return vec3(A * (2.0 * s - 1.0), lift * y, mix(-0.75, 0.12, smoothstep(0.25, 0.95, t)) * lift);
+}
 vec3 legIK(vec3 f, float hipY) {
   const float L1 = ${(HIP_Y - KNEE_Y).toFixed(3)}, L2 = ${(KNEE_Y - ANKLE_Y).toFixed(3)};
   float ty = ${ANKLE_Y} + f.y;
@@ -419,6 +433,11 @@ void figRig(float fem, float load, float child) {
   float cyc = fract(arg / 6.2831853);
   float cs = cos(arg), sn = sin(arg - 0.31);
   vec3 fL = footPath(cyc, A, lift), fR = footPath(fract(cyc + 0.5), A, lift);
+  float run = iExt.x, air = iExt.y;
+  if (run > 0.001) {
+    fL = mix(fL, footRun(cyc, A, lift), run);
+    fR = mix(fR, footRun(fract(cyc + 0.5), A, lift), run);
+  }
   // standing: one knee relaxed, weight on the other leg, shifting every so often
   float shift = sign(sin(uTime * 0.11 + seed * 40.0)) * idle;
   vec3 relax = vec3(0.05, 0.02, -0.22);
@@ -428,6 +447,11 @@ void figRig(float fem, float load, float child) {
   float hL = ${ANKLE_Y} + fL.y + sqrt(max(0.0, R * R - fL.x * fL.x));
   float hR = ${ANKLE_Y} + fR.y + sqrt(max(0.0, R * R - fR.x * fR.x));
   float hip = min(${HIP_Y}, min(hL, hR) + 0.004);
+  if (run > 0.001) { // sink into each stance, float in the flight phase
+    float cL = cyc < RUN_ST ? sin(3.14159 * cyc / RUN_ST) : 0.0;
+    float cR = fract(cyc + 0.5) < RUN_ST ? sin(3.14159 * fract(cyc + 0.5) / RUN_ST) : 0.0;
+    hip = mix(hip, min(min(hL, hR) + 0.045, 0.9) - 0.04 * max(cL, cR) * lift, run);
+  }
   // sitting on a crate
   hip = mix(hip, 0.47, sit);
   gLegL = mix(legIK(fL, hip), vec3(1.42, 1.5, 0.05), sit);
@@ -469,6 +493,29 @@ void figRig(float fem, float load, float child) {
     float wv = sin(uTime * 6.5 + iAnim.x * 3.0);
     if (style > 4.5) gArmL = mix(gArmL, vec4(1.3 + 0.35 * wv, 0.9, 0.0, 0.25), g); // waving passengers in
     else gArmR = mix(gArmR, vec4(2.35 + 0.22 * wv, 0.32 + 0.22 * wv, 0.0, 0.45), g);
+  }
+  // running: lean in, bent elbows pumping, more twist through the trunk
+  float rk = run * lift;
+  if (rk > 0.001) {
+    float c2 = cos(arg - 0.35);
+    gArmL = mix(gArmL, vec4(-0.55 * c2 - 0.15, 0.14, 0.22, 1.38), rk);
+    gArmR = mix(gArmR, vec4(0.55 * c2 - 0.15, 0.14, 0.22, 1.38), rk);
+    gLean += 0.17 * rk;
+    gHeadNod -= 0.12 * rk;
+    gYaw *= 1.0 + 0.5 * rk;
+    gChestYaw *= 1.0 + 0.6 * rk;
+  }
+  // airborne (jumping): lead knee tucked, trailing leg folded back, arms thrown up and out
+  if (air > 0.001) {
+    gLegL = mix(gLegL, vec3(1.05, 1.6, 0.35), air);
+    gLegR = mix(gLegR, vec3(-0.2, 1.05, -0.45), air);
+    gPel.y = mix(gPel.y, 0.84, air);
+    gPel.x *= 1.0 - air;
+    gRoll *= 1.0 - air;
+    gArmL = mix(gArmL, vec4(1.1, 0.45, 0.0, 0.85), air);
+    gArmR = mix(gArmR, vec4(-0.5, 0.55, 0.0, 0.6), air);
+    gLean = mix(gLean, 0.12, air);
+    gHeadNod = mix(gHeadNod, -0.12, air);
   }
 }
 
@@ -582,11 +629,29 @@ vec3 figColor() {
       c = mix(c, pd(5).rgb, pat * 0.75);
     } else if (outfit == 5.0) { // school: jersey V
       if (b.z > 0.05 && abs(b.x) < (b.y - 1.26) * 0.5) c = vec3(0.92, 0.92, 0.9);
+    } else if (outfit == 6.0) { // football kit: trim-coloured V collar, shoulder flashes, side panels, hem; a number on the back
+      vec3 tr = pd(8).rgb;
+      float vw = (b.y - 1.32) * 0.62;
+      if (b.z > 0.03 && abs(b.x) < vw) c = abs(b.x) > vw - 0.022 ? tr : skin;
+      if (b.y > 1.455) c = tr;
+      float ang = atan(b.x, b.z);
+      if (abs(abs(ang) - 1.5708) < 0.11 && b.y < 1.36) c = tr;
+      if (b.y > 1.395 && b.y < 1.43 && abs(abs(ang) - 1.5708) < 0.45) c = tr;
+      if (b.y < 1.04) c = tr;
+      if (b.z < -0.05) { // "10" on the back
+        vec2 q = vec2(b.x, b.y - 1.235);
+        float one = step(abs(q.x - 0.045), 0.011) * step(abs(q.y), 0.075);
+        vec2 o = vec2((q.x + 0.035) / 0.032, q.y / 0.075);
+        float r = length(o);
+        float zero = step(abs(r - 0.82), 0.25);
+        if (one + zero > 0.5) c = tr;
+      }
     }
     return c;
   }
   if (part == 4.0) { // arm: sleeve then skin
     vec4 top = pd(2);
+    if (outfit == 6.0 && vAux < top.a && vAux > top.a - 0.03) return pd(8).rgb; // kit sleeve cuff
     return vAux < top.a ? top.rgb : skin;
   }
   if (part == 2.0) { // leg
@@ -677,18 +742,21 @@ export function createFigures(scene, capacity, opts = {}) {
     const m = new THREE.InstancedMesh(geo, mat, Math.max(1, capacity));
     const anim = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, capacity) * 4), 4);
     const pose = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, capacity) * 4), 4);
+    const ext = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, capacity) * 4), 4);
     anim.setUsage(THREE.DynamicDrawUsage);
     pose.setUsage(THREE.DynamicDrawUsage);
+    ext.setUsage(THREE.DynamicDrawUsage);
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('iAnim', anim);
     geo.setAttribute('iPose', pose);
+    geo.setAttribute('iExt', ext);
     m.customDepthMaterial = depth;
     m.castShadow = true;
     m.receiveShadow = true;
     m.frustumCulled = false;
     m.count = 0;
     scene.add(m);
-    return { m, anim, pose, M: m.instanceMatrix.array, A: anim.array, P: pose.array, ups: [[m.instanceMatrix, 16], [anim, 4], [pose, 4]] };
+    return { m, anim, pose, M: m.instanceMatrix.array, A: anim.array, P: pose.array, E: ext.array, ups: [[m.instanceMatrix, 16], [anim, 4], [pose, 4], [ext, 4]] };
   });
   let cam = null;
   const { near: nearIdx, shadow } = geoN.userData.ranges;
@@ -709,7 +777,7 @@ export function createFigures(scene, capacity, opts = {}) {
   // per-person state
   const X = new Float32Array(capacity), Y = new Float32Array(capacity), Z = new Float32Array(capacity), YAW = new Float32Array(capacity);
   const S = new Float32Array(capacity).fill(1), W = new Float32Array(capacity).fill(1);
-  const AN = new Float32Array(capacity * 4), PO = new Float32Array(capacity * 4), HID = new Uint8Array(capacity);
+  const AN = new Float32Array(capacity * 4), PO = new Float32Array(capacity * 4), EX = new Float32Array(capacity * 4), HID = new Uint8Array(capacity);
   let n = 0, texDirty = true;
   const cnt = [0, 0], visible = [0, 0];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), sph = new THREE.Sphere();
@@ -770,6 +838,19 @@ export function createFigures(scene, capacity, opts = {}) {
     hide(i, h) {
       HID[i] = h ? 1 : 0;
     },
+    // Drive the gait directly (e.g. the player): phase in radians (advanced by the caller, so the cadence can change
+    // freely), A = half stance span in metres (body units × scale), gesture 0..1
+    drive(i, phase, A, gesture = 0) {
+      AN[i * 4] = phase;
+      AN[i * 4 + 1] = 0;
+      AN[i * 4 + 2] = A / S[i];
+      AN[i * 4 + 3] = gesture;
+    },
+    // run 0..1 (running gait: flight phase, pumping arms, lean), air 0..1 (jump pose)
+    ext(i, run, air) {
+      EX[i * 4] = run;
+      EX[i * 4 + 1] = air;
+    },
     commit(time) {
       uTime.value = time;
       if (texDirty) (tex.needsUpdate = true), (texDirty = false);
@@ -805,11 +886,12 @@ export function createFigures(scene, capacity, opts = {}) {
         const a = k * 4, j = i * 4;
         L.A[a] = AN[j]; L.A[a + 1] = AN[j + 1]; L.A[a + 2] = AN[j + 2]; L.A[a + 3] = AN[j + 3];
         L.P[a] = PO[j]; L.P[a + 1] = PO[j + 1]; L.P[a + 2] = PO[j + 2]; L.P[a + 3] = PO[j + 3];
+        L.E[a] = EX[j]; L.E[a + 1] = EX[j + 1]; L.E[a + 2] = EX[j + 2]; L.E[a + 3] = EX[j + 3];
       }
       for (let l = 0; l < 2; l++) {
         const L = meshes[l], k = cnt[l];
         L.m.count = k;
-        for (let u = 0; u < 3; u++) {
+        for (let u = 0; u < L.ups.length; u++) {
           const attr = L.ups[u][0];
           attr.clearUpdateRanges();
           attr.addUpdateRange(0, Math.max(1, k) * L.ups[u][1]);
