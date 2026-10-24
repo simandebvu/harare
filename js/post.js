@@ -7,6 +7,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { aoHooks } from './ao-hooks.js';
 
 const GradeShader = {
   uniforms: {
@@ -47,6 +48,18 @@ export function createPost(renderer, scene, camera) {
   gtao.blendIntensity = 1.0;
   gtao.updateGtaoMaterial({ radius: 5, distanceExponent: 1.6, thickness: 4, scale: 1.2, samples: 8, distanceFallOff: 1, screenSpaceRadius: false });
   gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
+  // after GTAO's override-material normal pass, let posed meshes (people) draw themselves into the same buffer
+  const renderOverride = gtao.renderOverride.bind(gtao);
+  gtao.renderOverride = (r, material, rt, clearColor, clearAlpha) => {
+    renderOverride(r, material, rt, clearColor, clearAlpha);
+    if (material !== gtao.normalMaterial || !aoHooks.length) return;
+    const prevTarget = r.getRenderTarget(), prevAuto = r.autoClear;
+    r.setRenderTarget(rt);
+    r.autoClear = false;
+    for (const h of aoHooks) h(r, camera);
+    r.autoClear = prevAuto;
+    r.setRenderTarget(prevTarget);
+  };
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.5, 1.0);
   const output = new OutputPass();
   const grade = new ShaderPass(GradeShader);

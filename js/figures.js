@@ -8,6 +8,7 @@
 // Per-person looks (colours, outfit, hair style, loads, bags) live in a float texture indexed by person id, so the CPU
 // only streams a matrix and two vec4s per visible person per frame, sorted into the near / far mesh by distance.
 import * as THREE from 'three';
+import { aoHooks } from './ao-hooks.js';
 import { MeshKit } from './meshkit.js';
 import { NIGHT_GLSL, nightUniforms } from './nightglow.js';
 import { headParts, hairKind, HEAD_COMMON, HEAD_VERT, HEAD_FRAG } from './figure-head.js';
@@ -707,6 +708,17 @@ export function createFigures(scene, capacity, opts = {}) {
       .replace('#include <begin_vertex>', `vec3 fN = vec3(0.0, 1.0, 0.0);\nvec3 transformed = figPose(fN);`);
   };
   depth.customProgramCacheKey = () => 'harare-figure-depth-v3';
+  // posed normals for the AO pass (see ao-hooks.js)
+  const aoMat = new THREE.MeshNormalMaterial({ blending: THREE.NoBlending });
+  aoMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = uTime;
+    sh.uniforms.uData = uData;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>\n${HEADER}`)
+      .replace('#include <beginnormal_vertex>', `vec3 objectNormal = normal;\nvec3 posePos = figPose(objectNormal);`)
+      .replace('#include <begin_vertex>', `vec3 transformed = posePos;`);
+  };
+  aoMat.customProgramCacheKey = () => 'harare-figure-ao-v1';
 
   const meshes = [geoN, geoF].map((geo) => {
     const m = new THREE.InstancedMesh(geo, mat, Math.max(1, capacity));
@@ -734,17 +746,24 @@ export function createFigures(scene, capacity, opts = {}) {
   const near = meshes[0].m, far = meshes[1].m;
   near.onBeforeShadow = () => geoN.setDrawRange(nearIdx, shadow);
   near.onAfterShadow = () => geoN.setDrawRange(0, nearIdx);
-  // Override-material passes (the AO normal pass) can't pose the rig. Near people stand in there unposed (body, head
-  // and scalp only, no optional pieces) so ambient occlusion sees roughly their shape instead of the scene behind them,
-  // which otherwise printed the background's occlusion (window grids, branches) onto faces; far people are skipped.
+  // Override-material passes (the AO normal pass) can't pose the rig, so people skip them and draw themselves posed
+  // through ao-hooks.js instead (otherwise AO prints the background's occlusion onto faces).
   near.onBeforeRender = (r, s, camera, g, material) => {
     if (camera.isPerspectiveCamera) cam = camera;
-    geoN.setDrawRange(0, material === mat ? nearIdx : s.overrideMaterial ? proxy : 0);
+    geoN.setDrawRange(0, material === mat || material === aoMat ? nearIdx : 0);
   };
   far.onBeforeRender = (r, s, camera, g, material) => {
     if (camera.isPerspectiveCamera) cam = camera;
-    geoF.setDrawRange(0, material === mat ? Infinity : 0);
+    geoF.setDrawRange(0, material === mat || material === aoMat ? Infinity : 0);
   };
+  aoHooks.push((renderer, camera) => {
+    for (const m of [near, far]) {
+      if (!m.visible || !m.count) continue;
+      m.material = aoMat;
+      renderer.render(m, camera);
+      m.material = mat;
+    }
+  });
 
   // per-person state
   const X = new Float32Array(capacity), Y = new Float32Array(capacity), Z = new Float32Array(capacity), YAW = new Float32Array(capacity);
