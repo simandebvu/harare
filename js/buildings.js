@@ -16,7 +16,7 @@ const PALETTE = {
   colonialTrim: ['#6b2a26', '#2f4a34', '#f4f1ea', '#3b3f45'],
   modern: ['#e9e6de', '#d6d3cb', '#cfc8b8', '#e2dccd', '#bfbcb5', '#d8cfbd', '#c9c6bd'],
   mosaic: ['#6f8c9c', '#7d927a', '#b48a6e', '#8a9aa6'],
-  granite: ['#9b8a84', '#8a7468', '#a59a92', '#6f5a4c', '#b3a69a'],
+  granite: ['#a89a92', '#9c9590', '#b3a69a', '#8f8782', '#bdb3a8', '#a39484'],
   house: ['#efe7d6', '#e8dcc2', '#f2d3b3', '#d8c3a5', '#ffffff', '#e4c9a8', '#c9b49a'],
   tin: ['#8e3b2a', '#7a4a3a', '#5e6266', '#9a5a3c', '#6d3527', '#8a8f91', '#3f5e4a'],
   sign: ['#c8102e', '#f2b705', '#0a4ea2', '#1b8a3a', '#e35205', '#6a1b9a', '#00838f'],
@@ -27,7 +27,7 @@ const PALETTE = {
 const LANDMARKS = [
   { re: /Reserve Bank/i, kind: 'post', style: 6, wall: '#8d8a86', crown: 'cone' }, // granite tower, Great Zimbabwe cone top
   { re: /Joina City/i, kind: 'post', style: 2, wall: '#6f8fa8', podium: 2, spire: 28 },
-  { re: /Karigamombe/i, kind: 'post', style: 2, wall: '#8a6a4f', crown: 'step' }, // bronze glass
+  { re: /Karigamombe/i, kind: 'post', style: 6, wall: '#9a8270', crown: 'step' }, // brown precast
   { re: /Old Mutual Centre/i, kind: 'post', style: 6, wall: '#7a6550', crown: 'step' },
   { re: /Eastgate Shopping/i, kind: 'modern', style: 5, wall: '#8f8b84', chimneys: true, finDepth: 1.0 },
   { re: /ZB Life/i, kind: 'modern', style: 1, wall: '#c9cdcc', bands: true },
@@ -198,7 +198,7 @@ export function buildBuildings(scene, DATA) {
       if (e.len < 3) continue;
       const yaw = Math.atan2(e.bz - e.az, e.bx - e.ax);
       for (let y = y0 + floorH; y < y1 - 0.5; y += floorH)
-        box(e.mx + (e.nx * depth) / 2, e.mz + (e.nz * depth) / 2, y - 0.12, e.len + depth * 0.6, depth, 0.24, color, yaw);
+        box(e.mx + (e.nx * depth) / 2, e.mz + (e.nz * depth) / 2, y - 0.12, e.len + depth * 2, depth, 0.24, color, yaw);
     }
   }
   // Vertical fins at a 1.4–1.6 m pitch, full height
@@ -267,6 +267,46 @@ export function buildBuildings(scene, DATA) {
     box(x + e.nx * 0.17, z + e.nz * 0.17, y + 2 + h * 0.35, w * 0.8, 0.02, h * 0.3, c3.set('#f4f2ea'), yaw, [4, 1, 2]);
   }
 
+  // Hipped tin roof with a ridge along the long axis and 0.6 m eaves, over the footprint's oriented box.
+  // Returns false for footprints that fill their box poorly (L-shapes), which get a flat roof instead.
+  function hipRoof(ring, top, color, r) {
+    const n = ring.length / 2;
+    let best = 0, ang = 0, area = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const dx = ring[j * 2] - ring[i * 2], dz = ring[j * 2 + 1] - ring[i * 2 + 1], l = Math.hypot(dx, dz);
+      if (l > best) (best = l), (ang = Math.atan2(dz, dx));
+      area += ring[i * 2] * ring[j * 2 + 1] - ring[j * 2] * ring[i * 2 + 1];
+    }
+    const ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const pu = ring[i * 2] * ux + ring[i * 2 + 1] * uz, pv = ring[i * 2] * vx + ring[i * 2 + 1] * vz;
+      (u0 = Math.min(u0, pu)), (u1 = Math.max(u1, pu)), (v0 = Math.min(v0, pv)), (v1 = Math.max(v1, pv));
+    }
+    if (Math.abs(area / 2) / ((u1 - u0) * (v1 - v0)) < 0.78) return false;
+    let a = (u1 - u0) / 2 + 0.6, b = (v1 - v0) / 2 + 0.6;
+    const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
+    let swap = false;
+    if (b > a) ([a, b] = [b, a]), (swap = true);
+    const H = Math.min(2.8, b * (0.36 + r() * 0.12));
+    // P(s, t): s along the long axis, t across it
+    const P = (s, t, y) => {
+      const [su, sv] = swap ? [t, s] : [s, t];
+      const pu = cu + su, pv = cv + sv;
+      return [pu * ux + pv * vx, y, pu * uz + pv * vz];
+    };
+    const e = top - 0.15, rl = a - b;
+    const A = P(-a, -b, e), B = P(a, -b, e), C = P(a, b, e), D = P(-a, b, e), R0 = P(-rl, 0, top + H), R1 = P(rl, 0, top + H);
+    triUp(A, B, R1, color); triUp(A, R1, R0, color); // long side
+    triUp(C, D, R0, color); triUp(C, R0, R1, color); // long side
+    triUp(B, C, R1, color); triUp(D, A, R0, color); // hipped ends
+    // fascia under the eaves
+    const fas = c3.copy(color).multiplyScalar(0.6);
+    for (const [p, q] of [[A, B], [B, C], [C, D], [D, A]]) quad([q[0], e - 0.2, q[2]], [p[0], e - 0.2, p[2]], p, q, fas, null, NOFAC), quad(p, q, [q[0], e - 0.2, q[2]], [p[0], e - 0.2, p[2]], fas, null, NOFAC);
+    return true;
+  }
+
   // --- typology --------------------------------------------------------------------------------------------------------
   function pickKind(bd, area, cx, cz, core, r) {
     const h = bd.h;
@@ -301,13 +341,7 @@ export function buildBuildings(scene, DATA) {
       c.set(PALETTE.house[Math.floor(r() * PALETTE.house.length)]).multiplyScalar(0.92 + r() * 0.1);
       walls(ring, y0, top, base, c, [3, seed, 1]);
       const tin = c2.set(PALETTE.tin[Math.floor(r() * PALETTE.tin.length)]);
-      if (n <= 8 && area < 500) {
-        const apex = [cx, top + 1.6 + r() * 1.2, cz];
-        for (let i = 0; i < n; i++) {
-          const j = (i + 1) % n;
-          triUp([ring[i * 2], top, ring[i * 2 + 1]], [ring[j * 2], top, ring[j * 2 + 1]], apex, tin);
-        }
-      } else roof(ring, top, tin);
+      if (!hipRoof(ring, top, tin, r)) roof(ring, top, tin);
     } else {
       const kind = lm?.kind || pickKind(bd, area, cx, cz, core, r);
       let style, wall;
@@ -317,7 +351,7 @@ export function buildBuildings(scene, DATA) {
         wall = r() < 0.04 ? PALETTE.mosaic[Math.floor(r() * PALETTE.mosaic.length)] : PALETTE.modern[Math.floor(r() * PALETTE.modern.length)];
       } else {
         style = r() < 0.55 ? 2 : 6;
-        wall = style === 2 ? ['#6a5440', '#4f6f86', '#5c7a68', '#5e646a', '#8a6a4f'][Math.floor(r() * 5)] : PALETTE.granite[Math.floor(r() * PALETTE.granite.length)];
+        wall = style === 2 ? ['#5e6a74', '#4f6f86', '#5c7068', '#6a737a', '#7a6a58', '#58646e'][Math.floor(r() * 6)] : PALETTE.granite[Math.floor(r() * PALETTE.granite.length)];
       }
       if (lm) (style = lm.style), (wall = lm.wall);
       c.set(wall).multiplyScalar(0.94 + r() * 0.1);
@@ -325,7 +359,8 @@ export function buildBuildings(scene, DATA) {
       const f = [style + shop * 0.25, seed, 1];
       const floorH = FLOOR[style];
       const parapet = kind === 'colonial' ? 1.1 : 0.8;
-      const roofCol = c3.set(kind === 'colonial' ? '#8a8378' : '#7d7b77').multiplyScalar(0.85 + r() * 0.2).clone();
+      const ROOFS = ['#7d7b77', '#9a968e', '#8a8680', '#a9a49b', '#6e6c68', '#8f8a7f'];
+      const roofCol = c3.set(kind === 'colonial' ? PALETTE.tin[Math.floor(r() * PALETTE.tin.length)] : ROOFS[Math.floor(r() * ROOFS.length)]).multiplyScalar(0.88 + r() * 0.2).clone();
 
       // Massing: podium + tower for big modern/post plots, setback crown for post towers
       let edges;

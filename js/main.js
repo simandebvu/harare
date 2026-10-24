@@ -249,6 +249,7 @@ async function init() {
     traffic.update(dt, nightness);
     people.update(dt);
     clouds.update(dt, camera);
+    trees.update(dt, camera);
 
     // Drop ambient occlusion automatically if the machine can't keep up
     if (timer.elapsedTime > 6) frameTimes.push(dt); // ignore the post-load warm-up
