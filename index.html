@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Slop Harare</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%238a63c9%22/%3E%3C/svg%3E" />
+  <meta name="description" content="A procedural Harare CBD in three.js, built from OpenStreetMap: walk, drive a kombi or fly over the Sunshine City." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%224%22 fill=%22%23149045%22/%3E%3Crect y=%224%22 width=%2216%22 height=%222.2%22 fill=%22%23ffd200%22/%3E%3Crect y=%226.2%22 width=%2216%22 height=%223.6%22 fill=%22%23d40000%22/%3E%3Crect y=%229.8%22 width=%2216%22 height=%222.2%22 fill=%22%23ffd200%22/%3E%3Cpath d=%22M0 0 L8 8 L0 16z%22 fill=%22%23fff%22/%3E%3Ccircle cx=%223%22 cy=%228%22 r=%221.4%22 fill=%22%23d40000%22/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=Barlow+Semi+Condensed:wght@600;700&display=swap" />
   <link rel="stylesheet" href="css/style.css" />
   <script type="importmap">
     {
@@ -14,33 +18,226 @@
       }
     }
   </script>
+  <link rel="modulepreload" href="js/harare-data.js" />
 </head>
 <body>
+  <!-- 24 × 24 stroke icons drawn in currentColor -->
+  <svg class="icon-sprite" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13" cy="4.4" r="2"/><path d="M12.3 8.2 10.8 13.8M10.8 13.8 9.2 17.2 7.2 20.5M10.8 13.8l2.4 3 1.6 3.8M12.3 8.6 9.6 10.2l-.8 2.6M12.3 8.6l2.1 2.4 2.4.8"/></symbol>
+      <symbol id="i-kombi" viewBox="0 0 24 24"><path d="M3 16.5V9.2c0-1.8 1.2-3.2 3-3.2h11.2c1.4 0 2.3.8 2.8 2l1.5 3.8c.3.7.5 1.4.5 2.2v2.5H3z"/><path d="M3 11h18.3M8.5 6v5M13.5 6v5"/><circle cx="7" cy="17" r="1.8"/><circle cx="17" cy="17" r="1.8"/></symbol>
+      <symbol id="i-fly" viewBox="0 0 24 24"><path d="M12 3.5v6.6M12 10.1 3 14.3v1.6l9-2.2 9 2.2v-1.6l-9-4.2M12 13.7v4.6M9.2 20.5 12 18.3l2.8 2.2"/></symbol>
+      <symbol id="i-dawn" viewBox="0 0 24 24"><path d="M3 17.5h18M7 17.5a5 5 0 0 1 10 0M12 4.5v4M9.5 7 12 4.5 14.5 7M5.2 11.2l1.6 1.2M18.8 11.2l-1.6 1.2M8 21h8"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5"/></symbol>
+      <symbol id="i-golden" viewBox="0 0 24 24"><path d="M3 17.5h18M7 17.5a5 5 0 0 1 10 0M12 5v3M5.6 9.6l2 1.6M18.4 9.6l-2 1.6M7.5 21h9"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3 2"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21.2s-6.6-5.7-6.6-11.2a6.6 6.6 0 0 1 13.2 0c0 5.5-6.6 11.2-6.6 11.2z"/><circle cx="12" cy="10" r="2.4"/></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4.5 3.5 6.6v13l5.5-2.1 6 2.1 5.5-2.1v-13L15 6.6 9 4.5zM9 4.5v13M15 6.6v13"/></symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3.5 12.3V4.6c0-.6.5-1.1 1.1-1.1h7.7l8.2 8.2a1.6 1.6 0 0 1 0 2.2l-6.2 6.2a1.6 1.6 0 0 1-2.2 0z"/><circle cx="8.2" cy="8.2" r="1.5"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3.5 3.5l17 17M10.6 5.6c.5-.1.9-.1 1.4-.1 6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-2.4 3.2M6.6 6.6A15.6 15.6 0 0 0 2.5 12s3.5 6.5 9.5 6.5c1.6 0 3.1-.4 4.4-1.1M9.9 9.9a2.8 2.8 0 0 0 4.2 4.2"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m7 9.5 5 5 5-5"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m20 20-4.6-4.6"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5.5 12h13"/></symbol>
+      <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.4"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><path d="M12 2.5v3.1M12 18.4v3.1M2.5 12h3.1M18.4 12h3.1"/></symbol>
+      <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+      <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></symbol>
+      <!-- Zimbabwe-flavoured badge: the flag's stripes behind a white hoist triangle and red star -->
+      <symbol id="zw-badge" viewBox="0 0 32 32">
+        <rect width="32" height="32" rx="8" fill="#119a48"/>
+        <rect y="7.2" width="32" height="4.6" fill="#ffd200"/>
+        <rect y="11.8" width="32" height="8.4" fill="#d40000"/>
+        <rect y="13.8" width="32" height="4.4" fill="#111"/>
+        <rect y="20.2" width="32" height="4.6" fill="#ffd200"/>
+        <path d="M0 4.5 13.5 16 0 27.5z" fill="#fff"/>
+        <path d="M0 4.5 13.5 16 0 27.5z" fill="none" stroke="#111" stroke-width="1.1"/>
+        <path d="m5.3 12.6 1 2.3 2.5.2-1.9 1.6.6 2.4-2.2-1.3-2.1 1.3.6-2.4L1.9 15l2.5-.2z" fill="#d40000"/>
+      </symbol>
+    </defs>
+  </svg>
+
   <div id="app"></div>
 
   <div id="hud">
-    <div class="title">Slop Harare <span>· Sunshine City</span></div>
-    <div class="modes">
-      <button data-mode="fly" class="active">1 · Fly</button>
-      <button data-mode="walk">2 · Walk</button>
-      <button data-mode="drive">3 · Kombi</button>
+    <!-- Top-left: brand -->
+    <header class="hud-tl">
+      <div class="panel brand">
+        <svg class="badge" aria-hidden="true"><use href="#zw-badge"/></svg>
+        <div class="brand-titles">
+          <h1 class="title">Slop Harare</h1>
+          <div class="brand-sub"><span class="brand-tag">Sunshine City · </span>three.js · <span id="hud-fps" class="fps">--</span> fps</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Top-right toolbar -->
+    <div class="hud-tr">
+      <div id="toolbar" class="panel toolbar">
+        <div class="time-switch" role="group" aria-label="Time of day">
+          <button class="time-btn" data-hour="6" type="button" title="Dawn · 06:00"><svg class="icon" aria-hidden="true"><use href="#i-dawn"/></svg><span class="seg-label">Dawn</span></button>
+          <button class="time-btn" data-hour="12.5" type="button" title="Midday · 12:30"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span class="seg-label">Midday</span></button>
+          <button class="time-btn" data-hour="17.5" type="button" title="Golden hour · 17:30"><svg class="icon" aria-hidden="true"><use href="#i-golden"/></svg><span class="seg-label">Golden Hour</span></button>
+          <button class="time-btn" data-hour="21" type="button" title="Night · 21:00"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg><span class="seg-label">Night</span></button>
+        </div>
+        <button id="btn-clock" class="tool-btn clock-btn" type="button" popovertarget="time-pop" title="Fine-tune the time [T advances 30 min]">
+          <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg><span id="clock">16:30</span>
+        </button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button id="btn-teleport" class="tool-btn" type="button" popovertarget="teleport-pop" title="Teleport to a Harare landmark">
+          <svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg><span class="tool-label">Teleport</span><svg class="icon icon-sm chev" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+        </button>
+        <button id="btn-map" class="tool-btn" type="button" title="Harare Street Atlas [M]">
+          <svg class="icon" aria-hidden="true"><use href="#i-map"/></svg><span class="tool-label">Map</span><kbd>M</kbd>
+        </button>
+        <button id="btn-labels" class="tool-btn" type="button" title="Landmark labels [L]" aria-pressed="true">
+          <svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg><span class="tool-label">Labels</span><kbd>L</kbd>
+        </button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button id="btn-hide" class="tool-btn icon-only" type="button" title="Clean view: hide the HUD [U]" aria-label="Hide HUD">
+          <svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>
+        </button>
+      </div>
     </div>
-    <label class="time">
-      <span id="clock">16:30</span>
-      <input id="time" type="range" min="0" max="24" step="0.05" value="16.5" />
-    </label>
+
+    <!-- Bottom-left: street signs, GPS, minimap -->
+    <div class="hud-bl">
+      <div id="hud-signs" class="signs" aria-live="off"></div>
+      <aside id="minimap" class="panel radar" title="Open the Harare Street Atlas [M]">
+        <canvas id="minimap-canvas"></canvas>
+        <div id="gps-chip" class="gps-chip" hidden></div>
+        <kbd class="radar-key">M</kbd>
+      </aside>
+    </div>
+
+    <!-- Bottom-centre: controls hint + mode switch -->
+    <footer class="hud-bc">
+      <div id="help"></div>
+      <nav class="panel modes" aria-label="How to get around">
+        <button data-mode="fly" class="active" type="button" title="Fly [1]"><svg class="icon" aria-hidden="true"><use href="#i-fly"/></svg><span class="mode-label">Fly</span><kbd>1</kbd></button>
+        <button data-mode="walk" type="button" title="Walk [2]"><svg class="icon" aria-hidden="true"><use href="#i-walk"/></svg><span class="mode-label">Walk</span><kbd>2</kbd></button>
+        <button data-mode="drive" type="button" title="Drive a kombi [3]"><svg class="icon" aria-hidden="true"><use href="#i-kombi"/></svg><span class="mode-label">Kombi</span><kbd>3</kbd></button>
+      </nav>
+    </footer>
+
     <div id="where"></div>
+    <div id="toast" class="panel toast" role="status"></div>
   </div>
 
-  <div id="help"></div>
+  <button id="btn-show-ui" class="panel tool-btn icon-only" type="button" title="Show the HUD [U]" aria-label="Show HUD"><svg class="icon" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
 
-  <div id="loading">
-    <div>Slop Harare</div>
-    <small id="loading-status">loading…</small>
+  <!-- Popovers (native: light-dismiss & Esc) -->
+  <div id="time-pop" class="popover" popover aria-label="Time of day">
+    <div class="pop-title">Time of day</div>
+    <div class="pop-presets">
+      <button class="pop-item time-btn" data-hour="6" type="button"><svg class="icon" aria-hidden="true"><use href="#i-dawn"/></svg><span class="pop-name">Dawn</span><span class="pop-sub">06:00</span></button>
+      <button class="pop-item time-btn" data-hour="12.5" type="button"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span class="pop-name">Midday</span><span class="pop-sub">12:30</span></button>
+      <button class="pop-item time-btn" data-hour="17.5" type="button"><svg class="icon" aria-hidden="true"><use href="#i-golden"/></svg><span class="pop-name">Golden Hour</span><span class="pop-sub">17:30</span></button>
+      <button class="pop-item time-btn" data-hour="21" type="button"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg><span class="pop-name">Night</span><span class="pop-sub">21:00</span></button>
+    </div>
+    <label class="time">
+      <span class="pop-sub">00</span>
+      <input id="time" type="range" min="0" max="24" step="0.05" value="16.5" aria-label="Hour of day" />
+      <span class="pop-sub">24</span>
+    </label>
+  </div>
+  <div id="teleport-pop" class="popover" popover aria-label="Teleport to a landmark">
+    <div class="pop-title">Teleport to</div>
+    <div id="teleport-list" class="pop-scroll"></div>
+  </div>
+
+  <!-- Full-screen Harare Street Atlas [M] -->
+  <section id="atlas" class="atlas" role="dialog" aria-modal="true" aria-label="Harare Street Atlas" hidden>
+    <canvas id="atlas-base"></canvas>
+    <canvas id="atlas-over"></canvas>
+    <div class="atlas-head">
+      <div class="panel atlas-title">
+        <svg class="badge" aria-hidden="true"><use href="#zw-badge"/></svg>
+        <div>
+          <h2>Harare Street Atlas</h2>
+          <p id="atlas-you">Central Business District</p>
+        </div>
+      </div>
+      <div class="panel atlas-search">
+        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="atlas-q" type="text" placeholder="Search streets &amp; places — Samora, Joina, 4th St…" aria-label="Search streets and places" autocomplete="off" spellcheck="false" />
+        <ul id="atlas-results" class="atlas-results" role="listbox"></ul>
+      </div>
+      <button id="atlas-close" class="panel tool-btn atlas-close" type="button" title="Close [M / Esc]">
+        <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg><span class="tool-label">Close</span><kbd>Esc</kbd>
+      </button>
+    </div>
+    <div class="atlas-ctrls">
+      <div class="panel compass" title="North is up · the CBD grid runs almost true north–south">
+        <svg viewBox="0 0 44 44" aria-hidden="true"><path d="M22 9.5 25.6 22h-7.2z" fill="#e8463a"/><path d="M22 34.5 25.6 22h-7.2z" fill="rgba(255,255,255,0.7)"/><text x="22" y="8" text-anchor="middle">N</text></svg>
+      </div>
+      <div class="panel ctrl-stack">
+        <button id="atlas-in" class="icon-btn" type="button" title="Zoom in" aria-label="Zoom in"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+        <button id="atlas-out" class="icon-btn" type="button" title="Zoom out" aria-label="Zoom out"><svg class="icon" aria-hidden="true"><use href="#i-minus"/></svg></button>
+      </div>
+      <div class="panel ctrl-stack">
+        <button id="atlas-locate" class="icon-btn" type="button" title="Centre on you" aria-label="Centre on you"><svg class="icon" aria-hidden="true"><use href="#i-locate"/></svg></button>
+        <button id="atlas-fit" class="icon-btn" type="button" title="Whole city" aria-label="Show the whole city"><svg class="icon" aria-hidden="true"><use href="#i-fit"/></svg></button>
+      </div>
+    </div>
+    <div id="atlas-card" class="panel atlas-card" hidden>
+      <div class="card-top">
+        <div>
+          <div id="card-name" class="card-name"></div>
+          <div id="card-sub" class="card-sub"></div>
+        </div>
+        <button id="card-x" class="icon-btn" type="button" aria-label="Clear destination"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="card-actions">
+        <button id="card-go" class="btn-primary" type="button"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>Teleport here</button>
+        <button id="card-nav" class="btn-ghost" type="button"><svg class="icon" aria-hidden="true"><use href="#i-route"/></svg>Navigate</button>
+      </div>
+    </div>
+    <div class="atlas-foot">
+      <div id="atlas-status" class="panel atlas-status">Click anywhere for a GPS route · drag to pan · scroll to zoom</div>
+    </div>
+    <div class="panel atlas-legend">
+      <span class="lg"><i class="sw sw-you"></i>You</span>
+      <span class="lg"><i class="sw sw-pin"></i>Landmark</span>
+      <span class="lg"><i class="sw sw-route"></i>GPS route</span>
+      <span class="lg"><i class="sw sw-trunk"></i>Trunk road</span>
+      <span class="lg"><i class="sw sw-rail"></i>Railway</span>
+      <span class="lg"><i class="sw sw-park"></i>Park</span>
+    </div>
+  </section>
+
+  <div id="loading" role="status" aria-live="polite">
+    <div class="loader">
+      <svg class="badge loader-badge" aria-hidden="true"><use href="#zw-badge"/></svg>
+      <div class="loader-title">Slop Harare</div>
+      <div class="loader-sub">The Sunshine City, from OpenStreetMap</div>
+      <div class="loader-track" aria-hidden="true"><span id="loading-bar"></span></div>
+      <small id="loading-status">loading…</small>
+    </div>
   </div>
 
   <div id="credit">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></div>
 
+  <script>
+    // Loading progress: main.js narrates its build steps into #loading-status; map them onto the bar.
+    (() => {
+      const bar = document.getElementById('loading-bar'), st = document.getElementById('loading-status'), box = document.getElementById('loading');
+      const STEPS = [[/streets/, 22], [/buildings/, 40], [/jacarandas/, 62], [/kombis/, 74], [/pavements/, 86]];
+      let pct = 6;
+      const set = (p) => { pct = Math.max(pct, p); bar.style.width = pct + '%'; };
+      set(6);
+      // Creep while the data module downloads so the bar never looks stuck
+      const creep = setInterval(() => pct < 20 && set(pct + 1), 160);
+      new MutationObserver(() => {
+        const t = st.textContent;
+        if (/wrong/.test(t)) return box.classList.add('error');
+        for (const [re, p] of STEPS) if (re.test(t)) set(p);
+      }).observe(st, { childList: true, characterData: true, subtree: true });
+      new MutationObserver(() => box.classList.contains('done') && (set(100), clearInterval(creep))).observe(box, { attributes: true, attributeFilter: ['class'] });
+    })();
+  </script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
