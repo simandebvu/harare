@@ -45,8 +45,8 @@ export function createPost(renderer, scene, camera) {
   const gtao = new GTAOPass(scene, camera, size.x, size.y);
   gtao.output = GTAOPass.OUTPUT.Default;
   gtao.blendIntensity = 1.0;
-  gtao.updateGtaoMaterial({ radius: 5, distanceExponent: 1.6, thickness: 4, scale: 1.2, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
-  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+  gtao.updateGtaoMaterial({ radius: 5, distanceExponent: 1.6, thickness: 4, scale: 1.2, samples: 8, distanceFallOff: 1, screenSpaceRadius: false });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.5, 1.0);
   const output = new OutputPass();
   const grade = new ShaderPass(GradeShader);
@@ -75,6 +75,9 @@ export function createPost(renderer, scene, camera) {
     setSize(w, h) {
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(w, h);
+      // AO re-renders the scene for its normals: do that (and the AO itself) at half resolution
+      const pr = renderer.getPixelRatio();
+      gtao.setSize(Math.round((w * pr) / 2), Math.round((h * pr) / 2));
     },
     setNight(n) {
       bloom.strength = 0.12 + n * 0.75;
