@@ -73,7 +73,7 @@ function clearDest() {
 }
 function computeRoute() {
   if (!dest) return;
-  const p = C.controls.position, mode = C.getMode();
+  const p = (C.controls.playerState || C.controls.position), mode = C.getMode();
   routeFrom.x = p.x;
   routeFrom.z = p.z;
   routeFrom.mode = mode;
@@ -147,7 +147,7 @@ function setHidden(h) {
 }
 
 function updateSigns() {
-  const p = C.controls.position;
+  const p = (C.controls.playerState || C.controls.position);
   const fly = C.getMode() === 'fly';
   const high = fly && C.camera.position.y > 700;
   const street = high ? null : geo.nearestStreet(p.x, p.z, fly ? 80 : 45);
@@ -210,7 +210,7 @@ export default {
     geo = buildGeo(ctx.DATA);
     const layers = buildLayers(ctx.DATA);
     minimap = createMinimap($('minimap-canvas'), geo, layers);
-    const getPlayer = () => C.controls.position;
+    const getPlayer = () => (C.controls.playerState || C.controls.position);
     atlas = createAtlas({
       DATA: ctx.DATA,
       geo,
@@ -289,7 +289,7 @@ export default {
     dir.z = -e[10];
     if (dir.x * dir.x + dir.z * dir.z > 1e-6) headingA = Math.atan2(dir.z, dir.x);
 
-    const p = ctx.controls.position, mode = ctx.getMode();
+    const p = (ctx.controls.playerState || ctx.controls.position), mode = ctx.getMode();
 
     // GPS: re-route as you move, arrive when close
     if (dest && (routeT -= dt) <= 0) {

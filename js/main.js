@@ -182,7 +182,7 @@ async function init() {
   const help = document.getElementById('help');
   const HELP = {
     fly: 'Drag to pan · right-drag to orbit · scroll to zoom · WASD to glide · L labels · T advance time · P quality',
-    walk: 'Click to look around · WASD walk · Shift run · Q/E turn · Esc release mouse',
+    walk: 'Drag to look · WASD walk · Shift run · Space jump · V camera',
     drive: 'W/S accelerate & reverse · A/D steer · Space brake · keep left!',
   };
   const buttons = [...document.querySelectorAll('.modes button')];
