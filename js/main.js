@@ -78,7 +78,7 @@ async function init() {
   await step('laying out streets…');
   const world = buildWorld(scene, DATA, renderer);
   await step(`raising ${DATA.buildings.length} buildings…`);
-  const buildings = buildBuildings(scene, DATA);
+  const buildings = buildBuildings(scene, DATA, renderer);
   await step('planting jacarandas…');
   const trees = buildTrees(scene, DATA, buildings.blocked);
   await step('starting kombis…');

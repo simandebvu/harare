@@ -3,14 +3,14 @@
 import * as THREE from 'three';
 import { rng } from './util.js';
 
-function canvas(size) {
+export function canvas(size) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
-  return [c, c.getContext('2d')];
+  return [c, c.getContext('2d', { willReadFrequently: true })];
 }
 
 // Tileable value noise painted as soft blobs at several scales
-function noise(g, size, r, octaves, alpha, light = 255, dark = 0) {
+export function noise(g, size, r, octaves, alpha, light = 255, dark = 0) {
   for (const [count, rad] of octaves) {
     for (let i = 0; i < count; i++) {
       const x = r() * size, y = r() * size, rr = rad * (0.5 + r());
@@ -27,7 +27,7 @@ function noise(g, size, r, octaves, alpha, light = 255, dark = 0) {
   }
 }
 
-function speckle(g, size, r, n, light, dark) {
+export function speckle(g, size, r, n, light, dark) {
   const img = g.getImageData(0, 0, size, size);
   const d = img.data;
   for (let i = 0; i < n; i++) {
