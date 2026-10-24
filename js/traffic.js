@@ -5,7 +5,10 @@
 // for too long forces their way through, so the grid can't lock up.
 import * as THREE from 'three';
 import { groundY, rng, coreWeight } from './util.js';
-import { VEHICLE_TYPES, vehicleGeometry, lampGeometry } from './vehicles.js';
+import { VEHICLE_TYPES, ATLAS, ROUTES } from './vehicles.js';
+import { createVehicleRenderer } from './vehicle-render.js';
+import { createFigures } from './figures.js';
+import { createRankLights } from './rank-lights.js';
 import { STREET } from './street.js';
 import { rankLayout } from './ranks.js';
 
@@ -124,14 +127,16 @@ export function createTraffic(scene, DATA, count = 650) {
     if (all) for (const o of all) if (!(o.e === car.e && o.dir === -car.dir)) n++;
     if (!n) return all?.find((o) => o.e === car.e) || { e: car.e, dir: -car.dir };
     sample(car.e, car.dir, Math.max(0, edges[car.e].L - 0.5), hereS);
-    let best = null, bw = -1;
+    let best = null, bw = -1, turn = 0;
     for (const o of all) {
       if (o.e === car.e && o.dir === -car.dir) continue;
       sample(o.e, o.dir, Math.min(2, edges[o.e].L), nextS);
       const straight = hereS.tx * nextS.tx + hereS.tz * nextS.tz; // 1 straight, 0 turn, -1 back
       const w = (1.4 + straight) * (0.6 + edges[o.e].rank * 0.25) * r();
-      if (w > bw) (bw = w), (best = o);
+      // heading (tx, tz) turning towards +x from +z is a left turn: the cross product goes negative
+      if (w > bw) (bw = w), (best = o), (turn = straight > 0.8 ? 0 : hereS.tx * nextS.tz - hereS.tz * nextS.tx < 0 ? -1 : 1);
     }
+    car.turn = n > 1 ? turn : 0; // only signal where there's a choice
     return best;
   }
 
@@ -146,31 +151,13 @@ export function createTraffic(scene, DATA, count = 650) {
       type, len: T.len, e, dir, s: r() * E.L, lane: Math.floor(r() * E.lanesDir), v: 0, wait: 0,
       drive: (0.85 + r() * 0.3) * T.maxV, kombi: !!T.kombi, x: 0, z: 0, h: 0, init: false, color: T.colors[Math.floor(r() * T.colors.length)],
       jn: -1, hold: 0, ax: 0, az: 0, bi: 0, bucket: null,
+      turn: 0, ind: 0, indT: 0, brake: 0, lightsAt: 0.12 + r() * 0.3, cab: T.kombi && r() < 0.7 ? 1 : type === 'zupco' ? 1 : 0, ri: 0,
     };
     car.next = chooseNext(car);
     cars.push(car);
   }
 
-  // --- meshes --------------------------------------------------------------------------------------------------------
-  const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.3 });
-  const lampMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-  const meshes = {};
-  const c = new THREE.Color();
-  for (const type of typeNames) {
-    const list = cars.filter((car) => car.type === type);
-    const body = new THREE.InstancedMesh(vehicleGeometry(type), bodyMat, Math.max(1, list.length));
-    const lamps = new THREE.InstancedMesh(lampGeometry(type), lampMat, Math.max(1, list.length));
-    body.count = lamps.count = list.length;
-    body.castShadow = true;
-    body.frustumCulled = lamps.frustumCulled = false;
-    list.forEach((car, i) => {
-      car.slot = i;
-      body.setColorAt(i, c.set(car.color));
-    });
-    scene.add(body, lamps);
-    meshes[type] = { body, lamps, M: body.instanceMatrix.array, ML: lamps.instanceMatrix.array };
-  }
-
+  // --- rendering -----------------------------------------------------------------------------------------------------
   // Kombis parked in rows at the ranks; kombis driving past a rank pull in to load far more often
   const rankList = rankLayout(DATA);
   const slots = rankList.flatMap((R) => R.slots);
@@ -178,19 +165,49 @@ export function createTraffic(scene, DATA, count = 650) {
   edges.forEach((e, i) => {
     for (let k = 0; k < e.p.length; k += 2) if (rankList.some((R) => Math.hypot(e.p[k] - R.x, e.p[k + 1] - R.z) < R.r + 40)) nearRank[i] = 1;
   });
-  if (slots.length) {
-    const parked = new THREE.InstancedMesh(vehicleGeometry('kombi'), bodyMat, slots.length);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
-    const KC = VEHICLE_TYPES.kombi.colors;
-    slots.forEach((s, i) => {
-      q.setFromAxisAngle(up, s.yaw);
-      m.compose(v.set(s.x, groundY(s.x, s.z) + s.y, s.z), q, one);
-      parked.setMatrixAt(i, m);
-      parked.setColorAt(i, c.set(KC[Math.floor(r() * KC.length)]));
+  const capacity = {};
+  for (const car of cars) capacity[car.type] = (capacity[car.type] || 0) + 1;
+  capacity.kombi = (capacity.kombi || 0) + slots.length;
+  const R = createVehicleRenderer(scene, { capacity });
+  // per-vehicle looks: plate, options (1, 2 luggage sets; 4 police lights on; 8 rusty), dust, route board
+  const look = (type, car) => {
+    const T = VEHICLE_TYPES[type];
+    let opt = 0, dirt = r() * 0.25;
+    if (type === 'kombi') {
+      if (r() < 0.35) opt |= 1;
+      if (r() < 0.25) opt |= 2;
+      dirt = 0.15 + r() * 0.4;
+    }
+    if (type === 'police' && r() < 0.4) opt |= 4;
+    if (T.old || (type === 'sedan' && r() < 0.12)) {
+      dirt = 0.35 + r() * 0.5;
+      if (r() < 0.6) opt |= 8;
+    }
+    const color = car?.color || T.colors[Math.floor(r() * T.colors.length)];
+    return R.add(type, color, Math.floor(r() * ATLAS.plates), opt, Math.min(0.9, dirt), Math.floor(r() * ROUTES.length));
+  };
+  for (const car of cars) car.ri = look(car.type, car);
+  const parked = slots.map((s) => {
+    const i = look('kombi');
+    R.set(i, s.x, groundY(s.x, s.z) + s.y, s.z, s.yaw);
+    return { i, cab: r() < 0.3 ? 1 : 0, park: r() < 0.15 ? 1 : 0 };
+  });
+
+  // Conductors (hwindi) hanging out of the sliding door of moving kombis
+  const kombis = cars.filter((c) => c.kombi);
+  const crew = createFigures(scene, kombis.length, { near: 45, far: 260 });
+  const SK = ['#5a3826', '#6b4430', '#7a4e34', '#4a2e20', '#64402c'], TOPC = ['#2d3e66', '#8a2222', '#e8e2d2', '#3f6f3a', '#d9a521', '#1f6fb3', '#ef8a2a', '#1c1c1e'];
+  const cc = (h) => new THREE.Color(h);
+  for (const car of kombis) {
+    const hivis = r() < 0.25;
+    car.crew = crew.add({
+      fem: 0, skin: cc(SK[Math.floor(r() * SK.length)]), top: cc(TOPC[Math.floor(r() * TOPC.length)]), bot: cc(r() < 0.6 ? '#2a3550' : '#1c1c1e'), hair: cc('#120e0c'),
+      shoe: cc(r() < 0.5 ? '#141414' : '#e4e4e0'), acc: cc(hivis ? '#ff6a12' : r() < 0.5 ? '#d63a2a' : '#1c1c1e'), bag: cc('#222'), outfit: hivis ? 2 : 0,
+      hairStyle: r() < 0.4 ? 4 : 0, sleeve: r() < 0.6 ? 0.16 : 0.53, phase: r() * 6.28, freq: 5.5, seed: r(),
     });
-    parked.castShadow = parked.receiveShadow = true;
-    scene.add(parked);
+    crew.pose(car.crew, 0, 5, 0.22);
   }
+  const rankLights = createRankLights(scene, rankList);
 
   // Robot heads: a dark housing per approach axis per junction, with one lamp (red / amber / green) lit and moved
   // to its slot whenever the phase changes. Lamps poke through both faces so they read from either direction.
@@ -333,8 +350,12 @@ export function createTraffic(scene, DATA, count = 650) {
         else if (car.v > 4 && car.jn < 0 && remaining > 25 && r() < dt * (nearRank[car.e] ? 0.1 : 0.02 * (0.3 + coreWeight(car.x, car.z)))) car.wait = nearRank[car.e] ? 6 + r() * 10 : 4 + r() * 8;
       }
       const target = Math.min(E.vmax * car.drive, Math.max(0, (gap - 2.5) * 0.9));
-      car.v += Math.max(-9 * dt, Math.min(2.8 * dt, target - car.v));
+      const dv = Math.max(-9 * dt, Math.min(2.8 * dt, target - car.v));
+      car.v += dv;
       if (car.v < 0) car.v = 0;
+      // brake lights: slowing hard, or held at a standstill
+      const braking = dv < -1.2 * dt || (car.v < 0.6 && target < 0.6) ? 1 : 0;
+      car.brake += (braking - car.brake) * Math.min(1, dt * 14);
       car.s += car.v * dt;
       while (car.s >= edges[car.e].L && edges[car.next.e].L > 0.01) {
         car.s -= edges[car.e].L;
@@ -346,6 +367,7 @@ export function createTraffic(scene, DATA, count = 650) {
         car.dir = nxt.dir;
         car.lane = Math.min(car.lane, edges[car.e].lanesDir - 1);
         if (r() < 0.2) car.lane = Math.floor(r() * edges[car.e].lanesDir);
+        if (car.ind === -1 || car.ind === 1) car.indT = 1.8; // keep blinking through the turn
         car.next = chooseNext(car);
       }
       // Leave the junction box once our tail is clear of it
@@ -370,17 +392,28 @@ export function createTraffic(scene, DATA, count = 650) {
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
       car.h += dh * Math.min(1, dt * 5);
 
-      // Write both instance matrices directly (yaw-only rotation)
-      const M = meshes[car.type], o = car.slot * 16;
-      const cs = Math.cos(car.h), sn = Math.sin(car.h), y = groundY(car.x, car.z) + ROAD_Y;
-      writeYaw(M.M, o, cs, sn, car.x, y, car.z);
-      writeYaw(M.ML, o, cs, sn, car.x, y, car.z);
+      const y = groundY(car.x, car.z) + ROAD_Y;
+      R.set(car.ri, car.x, y, car.z, car.h);
+      // Lamps: headlights after dusk (each driver has their own idea of when), indicators into turns, hazards while a
+      // kombi loads at the kerb
+      car.indT -= dt;
+      let ind = 0;
+      if (car.kombi && car.wait > 0) ind = 2;
+      else if (car.turn && remaining < 38) ind = car.turn;
+      else if (car.indT > 0) ind = car.ind;
+      car.ind = ind;
+      R.lamp(car.ri, nightness > car.lightsAt ? 1 : 0, car.brake, ind, car.cab * nightness);
+      if (car.kombi) {
+        // conductor on the step of the open sliding door, leaning out; waving at the kerb while loading
+        const cs = Math.cos(car.h), sn = Math.sin(car.h), lx = 0.86, lz = 0.62;
+        crew.place(car.crew, car.x + cs * lx + sn * lz, y + 0.34, car.z - sn * lx + cs * lz, car.h, 0.98, 1);
+        crew.animate(car.crew, 0, car.wait > 0 || car.v < 3 ? 1 : 0);
+      }
     }
-    for (const type in meshes) {
-      meshes[type].body.instanceMatrix.needsUpdate = true;
-      meshes[type].lamps.instanceMatrix.needsUpdate = true;
-    }
-    lampMat.color.setScalar(0.35 + nightness * 2.2);
+    for (const P of parked) R.lamp(P.i, 0.1 * P.park * nightness, 0.15 * P.park * nightness, 0, P.cab * nightness);
+    R.commit(time, nightness);
+    crew.commit(time);
+    rankLights.update(nightness);
 
     let dirty = false;
     for (let i = 0; i < lightList.length; i++) {
@@ -400,14 +433,7 @@ export function createTraffic(scene, DATA, count = 650) {
     }
   }
 
-  return { update, cars, lightCount: lights.size, parked: slots.length };
+  return { update, cars, lightCount: lights.size, parked: slots.length, renderer: R, crew };
 }
 
 const byS = (a, b) => a.s - b.s;
-
-function writeYaw(A, o, cs, sn, x, y, z) {
-  A[o] = cs; A[o + 1] = 0; A[o + 2] = -sn; A[o + 3] = 0;
-  A[o + 4] = 0; A[o + 5] = 1; A[o + 6] = 0; A[o + 7] = 0;
-  A[o + 8] = sn; A[o + 9] = 0; A[o + 10] = cs; A[o + 11] = 0;
-  A[o + 12] = x; A[o + 13] = y; A[o + 14] = z; A[o + 15] = 1;
-}

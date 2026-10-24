@@ -13,11 +13,22 @@ const TROUSERS = ['#2a3550', '#1e2a44', '#3b4f73', '#1c1c1e', '#34302b', '#6e625
 const DRESSES = ['#c0283a', '#e3a01b', '#2f5fa8', '#6d2f8a', '#e2557a', '#1f7a5a', '#d9632b', '#f2e6c9', '#1d1d1f', '#8fc0e8', '#a33d16'];
 const SUITS = ['#1d2230', '#2a2c30', '#3a3d44', '#232a3a'];
 const DOEKS = ['#d33a2c', '#f0b52a', '#1f6fb3', '#2c8a4b', '#7c2f9a', '#f2f2ee', '#e2557a', '#e8752a'];
-const SKIN = ['#3b2418', '#4a2e20', '#5c3a26', '#2f1d14', '#6b4630', '#41291c', '#53341f', '#7a5238'];
+const SKIN = ['#5a3826', '#6b4430', '#7a4e34', '#4a2e20', '#8a5a3c', '#5c3a28', '#6e4630', '#956446', '#64402c'];
 const BASINS = ['#c9cdd2', '#d63a2a', '#2f6fb3', '#3d8d46', '#e3b31f'];
 const BAGS = ['#3a2a1e', '#1c1c1e', '#6a4428', '#2f6fb3', '#b33a2a', '#d9cbb0'];
 const UMBRELLAS = ['#d63a2a', '#f2c230', '#2f6fb3', '#3d8d46', '#e86d24', '#ffffff', '#7d3fb0'];
 const PRODUCE = ['#c7271c', '#e8c22a', '#4c7a2a', '#e07b22', '#6e3b1f', '#f0e6c8'];
+const TROUSERS_F = ['#1c1c1e', '#2a3550', '#3b4f73', '#6b2f3a', '#e8e2d2', '#4a4d52', '#8a7d62'];
+const HAIRS = ['#120e0c', '#17110e', '#1d1511', '#0e0b0a'];
+const HAIRS_F = ['#120e0c', '#17110e', '#2a1a12', '#3a2014', '#4a1a1e', '#0e0b0a', '#5a3218'];
+const SHOES = ['#141414', '#141414', '#2b1c12', '#4a3020', '#e4e4e0', '#6a6a6a', '#1c2a44'];
+const HIVIS = ['#cfee1c', '#ff6a12', '#e8f53a'];
+const OVERALLS = ['#1f3b73', '#2f5fa8', '#d9541a', '#2c5a2f', '#1b2c55'];
+const TIES = ['#7a1c22', '#1c2f6a', '#2f2f33', '#6a5418', '#3a1c4a'];
+const CAPS = ['#1c1c1e', '#d63a2a', '#2f6fb3', '#f2f2ee', '#2c8a4b', '#e3b31f'];
+const JERSEYS = ['#6a1b2a', '#1f4f30', '#1d2a4a', '#5a1a5e', '#8a1c1c'];
+const GYMSLIPS = ['#2a3f7a', '#1f5a3a', '#6a1b2a', '#3a6fb0', '#7a7f86'];
+const CRATES = ['#c4271f', '#e3b31f', '#2f6fb3', '#2c8a4b'];
 const PAVE = 0.15; // pavement surface height above groundY
 
 export function createPeople(scene, DATA, blocked, count = 2600) {
@@ -108,44 +119,95 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   const F = createFigures(scene, capacity);
 
   // --- outfits ---------------------------------------------------------------------------------------------------------
-  const cT = new THREE.Color(), cB = new THREE.Color(), cS = new THREE.Color(), cA = new THREE.Color();
+  const col = (hex) => new THREE.Color(hex);
   // kind: 'walker' | 'vendor' | 'rank' | 'tout' | 'hawker'
   function dress(kind, core = 1) {
-    const woman = r() < 0.5;
-    const child = kind === 'walker' && r() < 0.04;
-    let dressed = 0, load = 0, bag = 0, doek = 0;
-    cS.set(pick(SKIN));
-    if (woman) {
-      dressed = r() < 0.6 ? 1 : 0;
-      doek = r() < (kind === 'vendor' ? 0.6 : 0.3) ? 1 : 0;
-      cT.set(pick(TOPS));
-      cB.set(dressed ? pick(DRESSES) : pick(TROUSERS));
-      if (dressed && r() < 0.6) cT.copy(cB); // one-piece dress
-      cA.set(doek ? pick(DOEKS) : pick(BAGS));
-    } else if (kind === 'walker' && r() < 0.18 * core) {
-      cT.set(pick(SUITS)); // office workers in the CBD
-      cB.copy(cT);
-      cA.set(pick(BAGS));
+    const child = kind === 'walker' && r() < 0.06;
+    const woman = kind === 'tout' ? r() < 0.12 : r() < 0.5;
+    const L = { fem: woman ? 1 : 0, child: child ? 1 : 0, seed: r(), skin: col(pick(SKIN)), hair: col(pick(woman ? HAIRS_F : HAIRS)), shoe: col(pick(SHOES)), bag: col(pick(BAGS)), acc: col(pick(DOEKS)), sleeve: r() < 0.5 ? 0.16 : 0.53, hem: 0, load: 0, bagKind: 0, outfit: 0, hairStyle: 0, skirt: 0, wrap: 0 };
+    L.top = col(pick(TOPS));
+    L.bot = col(pick(TROUSERS));
+    let school = false;
+    if (child && r() < 0.65) {
+      // school uniform: shirt, jersey or tunic, grey shorts or a gymslip, a backpack
+      school = true;
+      const jersey = r() < 0.4;
+      L.top = col(jersey ? pick(JERSEYS) : r() < 0.6 ? '#f2f2ee' : '#cfdced');
+      L.outfit = jersey ? 5 : 0;
+      L.sleeve = jersey ? 0.53 : 0.16;
+      if (woman) (L.bot = col(pick(GYMSLIPS))), (L.skirt = 0.5), r() < 0.5 && L.top.copy(L.bot);
+      else (L.bot = col(r() < 0.7 ? '#5c5f63' : '#2a3550')), (L.hem = r() < 0.7 ? 0.55 : 0);
+      L.shoe = col('#141414');
+      L.bagKind = 3;
+      L.bag = col(pick(BAGS));
+      L.hairStyle = woman ? (r() < 0.5 ? 0 : 3) : 0;
+    } else if (woman) {
+      const dressed = r() < (kind === 'vendor' ? 0.8 : 0.6);
+      if (dressed) {
+        L.bot = col(pick(DRESSES));
+        L.skirt = r() < 0.6 ? 0.18 + r() * 0.15 : 0.42 + r() * 0.12;
+        if (r() < 0.45) L.top.copy(L.bot); // one-piece dress
+        if (r() < (kind === 'vendor' ? 0.55 : 0.25)) (L.wrap = 1), (L.skirt = 0.2 + r() * 0.12); // zambia wrapper
+      } else {
+        L.bot = col(pick(TROUSERS_F));
+        L.hem = r() < 0.15 ? 0.3 : 0;
+      }
+      const h = r();
+      const doek = kind === 'vendor' ? 0.6 : kind === 'hawker' ? 0.5 : 0.28;
+      L.hairStyle = h < doek ? 2 : h < doek + 0.3 ? 3 : h < doek + 0.48 ? 1 : 0;
+      if (r() < 0.15 && kind !== 'vendor') (L.outfit = 4);
+    } else if (kind === 'tout' && r() < 0.6) {
+      L.outfit = 2; // marshal's hi-vis vest
+      L.acc = col(pick(HIVIS));
+      L.hairStyle = r() < 0.45 ? 4 : r() < 0.6 ? 0 : 5;
+      if (L.hairStyle === 4) L.acc = col(pick(HIVIS)); // cap and vest
     } else {
-      cT.set(pick(TOPS));
-      cB.set(pick(TROUSERS));
-      cA.set(pick(BAGS));
+      const u = r();
+      if (kind === 'walker' && u < 0.2 * core) {
+        L.outfit = 1; // office suit
+        L.top = col(pick(SUITS));
+        L.bot.copy(L.top);
+        L.acc = col(pick(TIES));
+        L.sleeve = 0.53;
+        L.shoe = col(r() < 0.7 ? '#121212' : '#3a2414');
+      } else if (u < 0.3) {
+        L.outfit = 3; // work overalls
+        L.top = col(pick(OVERALLS));
+        L.bot.copy(L.top);
+        L.sleeve = 0.53;
+        L.shoe = col(r() < 0.5 ? '#141414' : '#5a3a1c');
+      } else if (u < 0.45) {
+        L.outfit = 4; // checked / striped shirt
+        L.acc = col(pick(TOPS));
+      }
+      if (L.outfit !== 1 && r() < 0.06) L.hem = 0.55; // shorts
+      const h = r();
+      L.hairStyle = h < 0.62 ? 0 : h < 0.8 ? 5 : 4;
+      if (L.hairStyle === 4 && L.outfit !== 1) L.acc = col(pick(CAPS));
+      else if (L.hairStyle === 4) L.hairStyle = 0;
     }
+    if (L.outfit === 4 && woman) L.acc = col(pick(TOPS));
+    if (woman && L.hairStyle === 2 && L.wrap) L.acc = col(pick(DOEKS)); // doek and wrapper often match
     const carry = kind === 'walker' || kind === 'rank' || kind === 'hawker';
     if (carry && !child && r() < (kind === 'hawker' ? 0.45 : 0.1)) {
-      load = woman ? (r() < 0.75 ? 1 + Math.floor(r() * 2) : 3) : r() < 0.7 ? 3 : 1;
-      if (load < 3) cA.set(pick(BASINS));
-      else cA.set(pick(DOEKS));
+      L.load = woman ? (r() < 0.75 ? 1 + Math.floor(r() * 2) : 3) : r() < 0.7 ? 3 : 1;
+      if (L.load < 3) L.acc = col(pick(BASINS));
+      else L.acc = col(pick(DOEKS));
+      if (L.hairStyle === 4) L.hairStyle = 0;
+      if (L.hairStyle === 2 || L.hairStyle === 1) L.hairStyle = 3;
     }
-    if (!load && !child && carry && r() < 0.28) bag = r() < 0.55 ? 1 : 2;
-    if (kind === 'hawker' && !load) bag = 2;
-    if (load === 0 && doek) cA.set(pick(DOEKS));
-    const h = child ? 1.1 + r() * 0.25 : woman ? 1.55 + r() * 0.17 : 1.63 + r() * 0.22;
-    const b = child ? 0.85 : 0.9 + r() * 0.22 + (woman && r() < 0.3 ? 0.08 : 0);
-    const s = h / 1.72;
+    if (!L.load && !child && carry && r() < 0.28) L.bagKind = r() < 0.55 ? 1 : 2;
+    if (kind === 'hawker' && !L.load) L.bagKind = 2;
+    const h = child ? 1.1 + r() * 0.3 : woman ? 1.55 + r() * 0.17 : 1.63 + r() * 0.22;
+    const b = child ? 0.86 : 0.92 + r() * 0.18 + (woman && r() < 0.3 ? 0.08 : 0);
+    const sc = h / 1.72;
     const v = child ? 1.0 + r() * 0.4 : 1.0 + r() * 0.55;
-    const i = F.add(cT, cB, cS, cA, dressed, load, bag, doek, r() * 6.283, (v * 4.4) / s);
-    return { i, s, b, v };
+    L.phase = r() * 6.283;
+    L.freq = ((v * 4.4) / sc) * (L.skirt > 0 && L.skirt < 0.4 ? 1.12 : 1); // long skirts: shorter, quicker steps
+    const i = F.add(L);
+    const idle = r() < 0.45 ? 0 : 1 + Math.floor(r() * 3);
+    F.pose(i, 0, idle, 0);
+    return { i, s: sc, b, v, school };
   }
 
   // --- pedestrians ----------------------------------------------------------------------------------------------------
@@ -164,8 +226,10 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   const umbrella = new THREE.InstancedMesh(new THREE.ConeGeometry(1.3, 0.5, 8).translate(0, 2.25, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, side: THREE.DoubleSide }), ns);
   const stick = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.025, 0.025, 2.1, 4).translate(0, 1.05, 0), new THREE.MeshStandardMaterial({ color: '#cccccc' }), ns);
   const vendors = [];
+  const crates = new THREE.InstancedMesh(crateGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }), Math.max(1, ns));
+  let nc = 0;
   {
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3(), sc3 = new THREE.Vector3();
     stalls.forEach((s, i) => {
       const y = groundY(s.x, s.z) + s.y;
       q.setFromAxisAngle(up, s.yaw);
@@ -178,14 +242,27 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       umbrella.setColorAt(i, c.set(UMBRELLAS[Math.floor(r() * UMBRELLAS.length)]));
       // Seller standing behind the table, facing the street
       const o = dress('vendor');
-      const bx = s.x + Math.cos(s.yaw) * 0.85 * s.side, bz = s.z - Math.sin(s.yaw) * 0.85 * s.side;
+      const sit = r() < 0.55;
+      const back = sit ? 1.15 : 0.85;
+      const bx = s.x + Math.cos(s.yaw) * back * s.side, bz = s.z - Math.sin(s.yaw) * back * s.side;
       const yaw = s.yaw - (Math.PI / 2) * s.side;
       F.place(o.i, bx, y, bz, yaw, o.s, o.b);
-      vendors.push({ ...o, t: r() * 10 });
+      if (sit) {
+        // on an upturned crate, set just behind the hips
+        F.pose(o.i, 1, 0, 0);
+        const cx = bx - Math.sin(yaw) * 0.06 * o.s, cz = bz - Math.cos(yaw) * 0.06 * o.s;
+        q.setFromAxisAngle(up, yaw + (r() - 0.5) * 0.3);
+        m.compose(v.set(cx, y, cz), q, sc3.set(1, (0.47 * o.s - 0.03) / 0.4, 1));
+        crates.setMatrixAt(nc, m);
+        crates.setColorAt(nc++, c.set(CRATES[Math.floor(r() * CRATES.length)]));
+      }
+      vendors.push({ ...o, t: r() * 10, sit });
     });
   }
-  for (const m of [table, umbrella]) m.castShadow = true;
+  crates.count = nc;
+  for (const m of [table, umbrella, crates]) m.castShadow = true;
   if (ns) scene.add(table, produce, umbrella, stick);
+  if (nc) scene.add(crates);
 
   // --- ranks: shelters, queues, touts, milling crowd --------------------------------------------------------------------
   const shelterList = ranks.flatMap((R) => R.shelters);
@@ -224,9 +301,20 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   let time = 0;
   const ease = (cur, target, k) => cur + (target - cur) * k;
 
+  let hourT = 0, kidsHome = false;
   function update(dt) {
     dt = Math.min(dt, 0.1);
     time += dt;
+    // School uniforms on the streets by day only
+    if ((hourT -= dt) < 0) {
+      hourT = 1;
+      const h = globalThis.__harare?.ctx?.getHour?.();
+      const home = h !== undefined && (h < 6 || h > 18.5);
+      if (home !== kidsHome) {
+        kidsHome = home;
+        for (const p of walkers) if (p.school) F.hide(p.i, home);
+      }
+    }
     const lights = STREET.lights, st = STREET.time;
     const kA = Math.min(1, dt * 4);
 
@@ -272,7 +360,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       p.yaw = Math.atan2(tmp.tx * p.dir, tmp.tz * p.dir);
       p.amp = ease(p.amp, go, kA);
       F.place(p.i, p.x, groundY(p.x, p.z) + PAVE, p.z, p.yaw, p.s, p.b);
-      F.animate(p.i, p.amp, 0);
+      F.animate(p.i, p.v * p.amp, 0);
     }
 
     // Stall sellers: mostly still, now and then calling out with a raised hand
@@ -313,7 +401,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       p.amp = ease(p.amp, p.moving ? 1 : 0, kA);
       p.g = ease(p.g, gestT, kA);
       F.place(p.i, p.x, groundY(p.x, p.z) + p.y, p.z, p.yaw, p.s, p.b);
-      F.animate(p.i, p.amp, p.g);
+      F.animate(p.i, p.v * 0.75 * p.amp, p.g);
     }
 
     // Hawkers: out between the queued cars while their approach is red, back to the kerb before it turns green
@@ -351,15 +439,33 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       h.yaw += Math.atan2(Math.sin(dh), Math.cos(dh)) * Math.min(1, dt * 8);
       h.amp = ease(h.amp, moving ? 1 : 0, kA);
       h.g = ease(h.g, gest, kA);
+      h.x = x;
+      h.z = z;
       F.place(h.i, x, groundY(x, z) + (Math.abs(h.lat) < E.w / 2 ? 0.26 : PAVE), z, h.yaw, h.s, h.b);
-      F.animate(h.i, h.amp, h.g);
+      F.animate(h.i, h.v * h.amp, h.g);
     }
 
     F.commit(time);
   }
   update(0);
 
-  return { update, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
+  return { update, walkers, loiter, hawkerList: hawkers, figures: F, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
+}
+
+// Upturned plastic beer crate (0.4 m tall before scaling): slatted sides as dark bands
+function crateGeometry() {
+  const k = new MeshKit({ color: 3 });
+  const W = [1, 1, 1], D = [0.55, 0.55, 0.55];
+  k.box(0, 0.38, 0, 0.36, 0.04, 0.46, { color: W });
+  for (const s of [1, -1]) {
+    k.box(s * 0.175, 0.19, 0, 0.012, 0.36, 0.46, { color: W });
+    k.box(0, 0.19, s * 0.225, 0.36, 0.36, 0.012, { color: W });
+    for (const y of [0.1, 0.2, 0.29]) {
+      k.box(s * 0.182, y, 0, 0.004, 0.04, 0.38, { color: D });
+      k.box(0, y, s * 0.232, 0.3, 0.04, 0.004, { color: D });
+    }
+  }
+  return k.build();
 }
 
 function mergeBoxes(list) {
