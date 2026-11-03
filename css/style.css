@@ -219,6 +219,8 @@ body.ui-hidden #btn-show-ui:hover { opacity: 1; }
 /* Landmark labels in the 3D view */
 .label { color: #fff; font: 600 12px/1 var(--font-sans); background: rgba(14, 15, 18, 0.72); padding: 5px 9px; border-radius: 999px; white-space: nowrap; pointer-events: none; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.6); }
 body.ui-hidden .label { opacity: 0; }
+.label { transition: opacity 0.2s; }
+.label.label-hidden { opacity: 0; }
 
 /* ------------------------------------------------------------------------------------------------------------------
    Harare Street Atlas

@@ -24,7 +24,7 @@ export const BAG = { NONE: 0, SHOULDER: 1, HAND: 2, PACK: 3 };
 export const IDLE = { HANG: 0, CROSSED: 1, PHONE: 2, HIPS: 3, HANGON: 5 };
 
 const HIP_Y = 0.93, HIP_X = 0.092, KNEE_Y = 0.5, ANKLE_Y = 0.085;
-const SH = [0.185, 1.415, -0.015], ARM_AB = 0.09, UPPER = 0.29;
+const SH = [0.205, 1.415, -0.015], ARM_AB = 0.09, UPPER = 0.29;
 const TEX_W = 9; // texels per person
 
 // --- geometry ----------------------------------------------------------------------------------------------------------
@@ -128,10 +128,12 @@ const armSkin = (t, L) => {
 };
 const HAND = [
   [0.53, 0.02, 0.026],
-  [0.58, 0.023, 0.04],
-  [0.64, 0.021, 0.041],
-  [0.69, 0.016, 0.032],
-  [0.72, 0.008, 0.015],
+  [0.56, 0.025, 0.031],
+  [0.60, 0.029, 0.034],
+  [0.645, 0.026, 0.032],
+  [0.675, 0.023, 0.025],
+  [0.687, 0.016, 0.018],
+  [0.692, 0.009, 0.010],
 ];
 // Skirt / wrapper: [y, rx, rzF, rzB, cz, female extra]
 const SKIRT = [
@@ -167,7 +169,9 @@ function figureGeometry(k, detail) {
     const rows = thin(TORSO, N);
     const P = [], Fm = [];
     for (const [y, rx, f, b, cz, frx, ff, fb] of rows) {
-      const m = ring(y, rx, f, b, cz, n), w = ring(y, frx, ff, fb, cz, n);
+      // Clothing broadens through the chest and shoulders instead of a pinched upper body.
+      const shoulder = 1 + 0.09 * THREE.MathUtils.smoothstep(y, 1.12, 1.37) * (1 - THREE.MathUtils.smoothstep(y, 1.42, 1.53));
+      const m = ring(y, rx * shoulder, f, b, cz, n), w = ring(y, frx * shoulder, ff, fb, cz, n);
       P.push(m);
       Fm.push(m.map((p, j) => [w[j][0] - p[0], w[j][1] - p[1], w[j][2] - p[2]]));
     }
@@ -372,7 +376,8 @@ void figRig(float fem, float load, float child) {
     fR = mix(fR, footRun(fract(cyc + 0.5), A, lift), run);
   }
   // standing: one knee relaxed, weight on the other leg, shifting every so often
-  float shift = sign(sin(uTime * 0.11 + seed * 40.0)) * idle;
+  float shift = smoothstep(-0.4, 0.4, sin(uTime * 0.55 + seed * 40.0)) * 2.0 - 1.0;
+  shift *= idle;
   vec3 relax = vec3(0.05, 0.02, -0.22);
   fL += relax * max(0.0, shift);
   fR += relax * max(0.0, -shift);
@@ -389,11 +394,11 @@ void figRig(float fem, float load, float child) {
   hip = mix(hip, 0.47, sit);
   gLegL = mix(legIK(fL, hip), vec3(1.42, 1.5, 0.05), sit);
   gLegR = mix(legIK(fR, hip), vec3(1.38, 1.42, 0.0), sit);
-  float swayK = mix(0.035, 0.065, fem);
+  float swayK = mix(0.022, 0.035, fem);
   gRoll = swayK * lift * sn - 0.03 * shift;
   gPel = vec3(0.018 * lift * sn + 0.02 * shift * (1.0 - sit), hip, 0.0);
   gYaw = -0.085 * lift * cs;
-  gChestYaw = 0.13 * lift * cs;
+  gChestYaw = 0.085 * lift * cs;
   gLean = 0.05 * lift + 0.12 * sit;
   float look = (1.0 - step(0.5, load)) * idle;
   gHeadYaw = look * 0.45 * sin(uTime * 0.21 + seed * 31.0) * smoothstep(0.2, 0.7, sin(uTime * 0.13 + seed * 17.0) * 0.5 + 0.5);

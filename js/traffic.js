@@ -4,6 +4,7 @@
 // (same or opposing approach), robots permitting. Waiting cars get priority over a steady stream, and anyone stuck
 // for too long forces their way through, so the grid can't lock up.
 import * as THREE from 'three';
+import { sweepPose } from './collision.js';
 import { groundY, rng, coreWeight } from './util.js';
 import { VEHICLE_TYPES, ATLAS, ROUTES } from './vehicles.js';
 import { createVehicleRenderer } from './vehicle-render.js';
@@ -22,6 +23,7 @@ const STALE_AFTER = 14; // s a reservation may stand before it's treated as aban
 
 export function createTraffic(scene, DATA, count = 650) {
   const r = rng(99);
+  let contacts=null;
   const G = DATA.graph;
   // Edge endpoints a/b are offsets into the flat nodes array (x at n, z at n + 1), so per-node arrays use that length
   const nodeXZ = (n) => [G.nodes[n], G.nodes[n + 1]];
@@ -149,7 +151,7 @@ export function createTraffic(scene, DATA, count = 650) {
     const E = edges[e];
     const dir = E.o === -1 ? -1 : E.o === 1 ? 1 : r() < 0.5 ? 1 : -1;
     const car = {
-      type, len: T.len, e, dir, s: r() * E.L, lane: Math.floor(r() * E.lanesDir), v: 0, wait: 0,
+      type, len: T.len, width:T.width, e, dir, s: r() * E.L, lane: Math.floor(r() * E.lanesDir), v: 0, wait: 0,
       drive: (0.85 + r() * 0.3) * T.maxV, kombi: !!T.kombi, x: 0, z: 0, h: 0, init: false, color: T.colors[Math.floor(r() * T.colors.length)],
       jn: -1, hold: 0, ax: 0, az: 0, bi: 0, bucket: null,
       turn: 0, ind: 0, indT: 0, brake: 0, lightsAt: 0.12 + r() * 0.3, cab: T.kombi && r() < 0.7 ? 1 : type === 'zupco' ? 1 : 0, ri: 0,
@@ -191,7 +193,7 @@ export function createTraffic(scene, DATA, count = 650) {
   const parked = slots.map((s) => {
     const i = look('kombi');
     R.set(i, s.x, groundY(s.x, s.z) + s.y, s.z, s.yaw);
-    return { i, cab: r() < 0.3 ? 1 : 0, park: r() < 0.15 ? 1 : 0 };
+    return { x:s.x,z:s.z,h:s.yaw,len:4.9,width:VEHICLE_TYPES.kombi.width,type:'kombi',init:true,i, cab: r() < 0.3 ? 1 : 0, park: r() < 0.15 ? 1 : 0 };
   });
 
   // Conductors (hwindi) hanging out of the sliding door of moving kombis
@@ -263,6 +265,7 @@ export function createTraffic(scene, DATA, count = 650) {
 
     for (const car of cars) {
       const E = edges[car.e];
+      const oldPath={e:car.e,dir:car.dir,s:car.s,lane:car.lane,next:car.next};
       const remaining = E.L - car.s;
       let gap = 1e9;
       // Leader in the same lane on this edge
@@ -316,6 +319,10 @@ export function createTraffic(scene, DATA, count = 650) {
         if (car.wait > 0) (car.wait -= dt), (gap = 0);
         else if (car.v > 4 && car.jn < 0 && remaining > 25 && r() < dt * (nearRank[car.e] ? 0.1 : 0.02 * (0.3 + coreWeight(car.x, car.z)))) car.wait = nearRank[car.e] ? 6 + r() * 10 : 4 + r() * 8;
       }
+      if(car.init&&contacts) {
+        const look=Math.min(14,2+car.v*car.v/16);
+        gap=Math.min(gap,contacts.trafficGap(car,look)+1.8);
+      }
       const target = Math.min(E.vmax * car.drive, Math.max(0, (gap - 2.5) * 0.9));
       const dv = Math.max(-9 * dt, Math.min(2.8 * dt, target - car.v));
       car.v += dv;
@@ -351,13 +358,15 @@ export function createTraffic(scene, DATA, count = 650) {
       const off = E2.o ? (car.lane - (E2.lanesDir - 1) / 2) * E2.laneW : E2.laneW * (car.lane + 0.5);
       const tx = tmpS.x + tmpS.tz * off, tz = tmpS.z - tmpS.tx * off; // left normal = (tz, -tx)
       const th = Math.atan2(tmpS.tx, tmpS.tz);
-      if (!car.init) (car.x = tx), (car.z = tz), (car.h = th), (car.init = true);
+      if (!car.init) {car.x=tx;car.z=tz;car.h=th;car.init=true;clearSpawn(car);}
       const k = Math.min(1, dt * 6);
-      car.x += (tx - car.x) * k;
-      car.z += (tz - car.z) * k;
+      const nx=car.x+(tx-car.x)*k,nz=car.z+(tz-car.z)*k;
       let dh = th - car.h;
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-      car.h += dh * Math.min(1, dt * 5);
+      const nh=car.h+dh*Math.min(1,dt*5);
+      const result=sweepPose({x:car.x,z:car.z,yaw:car.h},{x:nx,z:nz,yaw:nh},p=>contacts?.carBlocked(p.x,p.z,p.yaw,car.len/2,VEHICLE_TYPES[car.type].width/2,car));
+      car.x=result.x;car.z=result.z;car.h=result.yaw;
+      if(result.hit){Object.assign(car,oldPath);car.v=0;car.brake=1;}
 
       const y = groundY(car.x, car.z) + ROAD_Y;
       R.set(car.ri, car.x, y, car.z, car.h);
@@ -385,7 +394,15 @@ export function createTraffic(scene, DATA, count = 650) {
     robots.update(time, nightness);
   }
 
-  return { update, cars, lightCount: lights.size, parked: slots.length, renderer: R, crew };
+  function clearSpawn(c) {
+    if(!contacts?.buildingBlocked(c.x,c.z,c.h,c.len/2,c.width/2))return;
+    const ox=c.x,oz=c.z;
+    for(let r=.4;r<8;r+=.4)for(let k=0;k<16;k++) {
+      const x=ox+Math.cos(k*Math.PI/8)*r,z=oz+Math.sin(k*Math.PI/8)*r;
+      if(!contacts.buildingBlocked(x,z,c.h,c.len/2,c.width/2)){c.x=x;c.z=z;return;}
+    }
+  }
+  return { setContacts: value=>{contacts=value;for(const c of cars)if(c.init)clearSpawn(c);}, parkedCars:parked, update, cars, lightCount: lights.size, parked: slots.length, renderer: R, crew };
 }
 
 const byS = (a, b) => a.s - b.s;

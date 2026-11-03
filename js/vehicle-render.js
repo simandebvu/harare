@@ -5,6 +5,7 @@
 // blinking indicators, police light bars, lit kombi cabins). At night a single additive mesh adds lamp flares and
 // headlight pools on the road ahead of each car (and a red wash behind) — no real lights.
 import * as THREE from 'three';
+import { createTrafficModels } from './traffic-models.js';
 import { VEHICLE_TYPES, vehicleGeometry, decalAtlas, ATLAS } from './vehicles.js';
 import { NIGHT_GLSL, nightUniforms } from './nightglow.js';
 
@@ -46,7 +47,7 @@ float vnoise(vec3 p) {
 
 export function vehicleMaterial() {
   const uTime = { value: 0 }, uDay = { value: 1 };
-  const mat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06 });
+  const mat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.2, clearcoat: 0.65, clearcoatRoughness: 0.16 });
   const atlas = decalAtlas();
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uTime;
@@ -124,10 +125,13 @@ export function vehicleMaterial() {
             vec3 V = -normalize(vViewPosition);
             vec3 Rv = reflect(V, normalize(normal));
             vec3 Rw = (vec4(Rv, 0.0) * viewMatrix).xyz;
-            float fr = 0.18 + 0.82 * pow(1.0 - clamp(dot(-V, normalize(normal)), 0.0, 1.0), 4.0);
+            float fr = 0.04 + 0.96 * pow(1.0 - clamp(dot(-V, normalize(normal)), 0.0, 1.0), 4.0);
             vec3 sky = mix(vec3(0.42, 0.44, 0.45), vec3(0.55, 0.66, 0.8), smoothstep(-0.1, 0.5, Rw.y));
-            sky = mix(sky, vec3(0.16, 0.15, 0.14), smoothstep(0.0, -0.3, Rw.y));
-            em += sky * fr * 1.1 * uDay;
+            sky = mix(sky, vec3(0.16, 0.15, 0.14), (1.0 - smoothstep(-0.3, 0.0, Rw.y)));
+            // A darker cabin at normal incidence, brighter reflections at grazing angles.
+            float horizon = 1.0 - smoothstep(0.0, 0.18, abs(Rw.y));
+            sky *= 1.0 - 0.24 * horizon;
+            em += sky * (0.08 + fr * 0.65) * uDay;
           }
           totalEmissiveRadiance += em + nightGlow(vNgWorld) * diffuseColor.rgb;
         }`
@@ -246,6 +250,7 @@ export function createVehicleRenderer(scene, opts = {}) {
   const types = Object.keys(VEHICLE_TYPES);
   const caps = opts.capacity; // {type: n}
   const T = {};
+  const detailed=createTrafficModels(scene,caps);
   for (const type of types) {
     const cap = Math.max(1, caps[type] || 0);
     T[type] = [1, 0].map((detail) => {
@@ -295,6 +300,8 @@ export function createVehicleRenderer(scene, opts = {}) {
   const c = new THREE.Color();
   return {
     material: mat,
+    ready: detailed.ready,
+    detailed,
     add(type, color, plate, opts2 = 0, dirt = 0, route = 0) {
       const i = n.v++;
       TYPE[i] = type;
@@ -331,6 +338,7 @@ export function createVehicleRenderer(scene, opts = {}) {
         cz = cam.position.z;
       }
       for (const type of types) for (const L of T[type]) L.n = 0;
+      const imported=detailed.update(cam,time,TYPE,X,Y,Z,H,COL,LMP,n.v);
       const near2 = NEAR * NEAR, far2 = FAR * FAR;
       const doGlow = night > 0.02;
       let g = 0;
@@ -360,6 +368,7 @@ export function createVehicleRenderer(scene, opts = {}) {
           sph.radius = VT.len * 0.6;
           if (doGlow && !frustum.intersectsSphere(sph)) continue;
         }
+        if(imported.has(i))continue;
         const L = T[type][lod], k = L.n++;
         const M = L.mesh.instanceMatrix.array, o = k * 16;
         const cs = Math.cos(H[i]), sn = Math.sin(H[i]);

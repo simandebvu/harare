@@ -1,10 +1,6 @@
-// js/player.js — the walking player: one figure from the crowd's own system (js/figures.js — smooth lofted body,
-// GPU-posed 13-bone rig with IK-planted feet), in a dedicated single-instance set so it is always near-detail and never
-// culled with the crowd. Wears a Warriors kit (green, gold trim, 10 on the back) and a red cap. The gait phase is
-// advanced here from ground speed — cadence and stance length chosen so the planted foot moves exactly with the ground —
-// blending from walk into a run (flight phase, pumping arms, forward lean); a jump pose while airborne; idle weight
-// shifts and glances when standing. Footfalls fire `harare:step`. Faces +z (heading yaw 0 = south, like the vehicles).
+// Animated hero character with a lightweight procedural fallback and shared footstep events.
 import * as THREE from 'three';
+import { loadPlayerModel } from './imported-models.js';
 import { createFigures, HAIR, OUTFIT, IDLE } from './figures.js';
 
 const TAU = Math.PI * 2;
@@ -46,11 +42,38 @@ export class Player {
     this.air = 0; // 0 grounded … 1 airborne pose (smoothed)
     this.t = 0;
     this.lean = 0;
+    this.scene = scene;
+    this.models = new Map();
+    this.character = 'male';
+    this.ready = this.setCharacter('male').catch(error => console.warn('[harare] Character load failed', error));
+  }
+
+  async setCharacter(character) {
+    const request = this.characterRequest = (this.characterRequest || 0) + 1;
+    let model = this.models.get(character);
+    if (!model) {
+      model = await loadPlayerModel(character);
+      model.root.visible = false;
+      this.models.set(character, model);
+      this.scene.add(model.root);
+    }
+    if (request !== this.characterRequest) return;
+    if (this.imported) {
+      model.root.position.copy(this.imported.root.position);
+      model.root.quaternion.copy(this.imported.root.quaternion);
+      this.imported.root.visible = false;
+    }
+    this.imported = model;
+    this.character = character;
+    model.root.visible = this._visible;
+    this.F.hide(this.i, true);
+    this.F.commit(this.t);
   }
 
   set visible(v) {
     this._visible = !!v;
-    this.F.hide(this.i, !v);
+    this.F.hide(this.i, !!this.imported || !v);
+    if (this.imported) this.imported.root.visible = !!v;
     this.F.commit(this.t); // drop / restore the instance now (update() doesn't run outside walk mode)
   }
   get visible() {
@@ -58,7 +81,7 @@ export class Player {
   }
 
   // x, y (feet), z, yaw (heading), speed m/s on the ground, airborne flag, turn rate (rad/s) for a little lean
-  update(dt, x, y, z, yaw, speed, airborne, turnRate = 0) {
+  update(dt, x, y, z, yaw, speed, airborne, turnRate = 0, powered = false) {
     this.t += dt;
     const F = this.F, i = this.i;
     this.runK += (smooth(2.5, 4.4, speed) - this.runK) * Math.min(1, dt * 6);
@@ -79,10 +102,14 @@ export class Player {
     const idx = Math.floor(this.phase / Math.PI);
     if (idx !== this.stepIdx) {
       this.stepIdx = idx;
-      if (!airborne && speed > 0.4) dispatchEvent(new CustomEvent('harare:step', { detail: { run: speed > 3.2 } }));
+      if (!powered && !airborne && speed > 0.4) dispatchEvent(new CustomEvent('harare:step', { detail: { run: speed > 3.2 } }));
     }
 
     this.lean += (THREE.MathUtils.clamp(-turnRate * speed * 0.035, -0.22, 0.22) - this.lean) * Math.min(1, dt * 6);
+    if (this.imported) {
+      this.imported.update(dt, x, y, z, yaw, speed, powered?false:airborne, powered?turnRate:this.lean, powered, powered?this.flightAction:null);
+      return;
+    }
     F.place(i, x, y, z, yaw, this.scale, 1.03);
     F.drive(i, this.phase, A);
     F.ext(i, r, this.air);

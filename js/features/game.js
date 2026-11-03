@@ -3,9 +3,9 @@
 // Movement, cameras and the player live in controls.js / cameras.js / player.js.
 
 const LABELS = {
-  drive: ['Kombi · Toyota HiAce', '→ Mbare'],
-  walk: ['On foot · CBD', ''],
-  fly: ['Helicopter', ''],
+  drive: ['Kombi · Toyota HiAce', 'Free roam'],
+  walk: ['Skyweaver · On foot', ''],
+  fly: ['Skyweaver', 'Superflight'],
 };
 const KEYS = {
   drive: '<kbd>W</kbd><kbd>S</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> brake · <kbd>Shift</kbd> boost · <kbd>H</kbd> hoot',
@@ -200,6 +200,8 @@ export default {
     }
     // Labels
     let label = LABELS[mode][0], tag = LABELS[mode][1];
+    if(mode==='drive'&&c.vehicleType==='roadster')label='Vela X1 · Flight taxi';
+    if(mode==='drive'&&ctx.shift?.state.status==='active')tag='→ '+ctx.shift.stops[ctx.shift.state.target].name;
     if (mode === 'fly') {
       if (cam.id === 'map') label = 'Map view';
       tag = `Alt ${Math.round(c.altitude)} m`;

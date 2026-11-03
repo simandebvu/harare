@@ -1,5 +1,7 @@
 // js/main.js — Slop Harare: a procedural Harare CBD from OpenStreetMap, in three.js
 import * as THREE from 'three';
+import { createCollisionWorld } from './collision-world.js';
+import { createCrowdModels } from './crowd-models.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { DATA } from './harare-data.js';
@@ -24,11 +26,12 @@ const step = (msg) => {
 
 async function init() {
   const app = document.getElementById('app');
-  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' }); // MSAA lives in the composer target
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); // MSAA lives in the composer target
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = true;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   app.appendChild(renderer.domElement);
 
@@ -58,8 +61,8 @@ async function init() {
   sun.shadow.camera.right = sun.shadow.camera.top = 450;
   sun.shadow.camera.near = 10;
   sun.shadow.camera.far = 2500;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.6;
+  sun.shadow.bias = -0.00012;
+  sun.shadow.normalBias = 0.16;
   scene.add(sun, sun.target);
   const hemi = new THREE.HemisphereLight('#d6e2f5', '#9a7652', 1.0);
   scene.add(hemi);
@@ -90,7 +93,10 @@ async function init() {
   // Landmark labels
   const labels = new THREE.Group();
   const seen = new Set();
+  // OSM spellings and long official names that read badly on screen
+  const LABEL_NAMES = { 'Harare Main Post Ofiice': 'Harare Main Post Office', 'Hyatt Regency Harare The Meikles': 'Meikles Hotel' };
   const addLabel = (n, x, y, z) => {
+    n = LABEL_NAMES[n] || n;
     if (seen.has(n)) return;
     seen.add(n);
     const el = document.createElement('div');
@@ -108,8 +114,28 @@ async function init() {
   }
   addLabel('The Kopje', -1377, 85, 1593);
   scene.add(labels);
+  // Declutter: nearest labels claim screen space first, any later one that overlaps them is hidden
+  const _lp = new THREE.Vector3();
+  let declutterT = 0;
+  const declutterLabels = () => {
+    const placed = [];
+    const items = labels.children.map((o) => ({ o, d: o.getWorldPosition(_lp).distanceToSquared(camera.position) })).sort((a, b) => a.d - b.d);
+    for (const { o } of items) {
+      const el = o.element;
+      if (el.style.display === 'none') continue;
+      const r = el.getBoundingClientRect();
+      const hit = placed.some((q) => r.left < q.right + 4 && r.right > q.left - 4 && r.top < q.bottom + 2 && r.bottom > q.top - 2);
+      el.classList.toggle('label-hidden', hit);
+      if (!hit) placed.push(r);
+    }
+  };
 
   const controls = new Controls(camera, renderer.domElement, scene, buildings.blocked);
+  const detailedCrowd=createCrowdModels(scene,people,camera);
+  const contacts=createCollisionWorld(traffic,people,controls);
+  controls.contacts=contacts;people.setContacts(contacts);traffic.setContacts(contacts);
+  await step('loading the kombi and player…');
+  await Promise.all([controls.pk.ready, controls.player.ready, traffic.renderer.ready, detailedCrowd.ready]);
   controls.map.target.set(0, 0, 0);
   controls.map.update();
   // Hook for tools/shot.mjs: place the fly camera precisely
@@ -129,7 +155,7 @@ async function init() {
   let hour = parseFloat(timeInput.value);
   let nightness = 0;
   const sunDir = new THREE.Vector3();
-  const warm = new THREE.Color('#ffb070'), noon = new THREE.Color('#fff6e8');
+  const warm = new THREE.Color('#ffc18a'), noon = new THREE.Color('#fff6e8');
   const fogDay = new THREE.Color('#b8c4d0'), fogDusk = new THREE.Color('#d39a6a'), fogNight = new THREE.Color('#1a2030');
 
   function applyTime() {
@@ -148,12 +174,12 @@ async function init() {
     envSky.material.uniforms.sunPosition.value.copy(sunDir);
     for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) envSky.material.uniforms[k].value = sky.material.uniforms[k].value;
 
-    sun.intensity = 3.8 * day * Math.min(1, el * 6 + 0.2);
+    sun.intensity = 3.5 * day * Math.min(1, el * 6 + 0.2);
     sun.color.copy(noon).lerp(warm, golden);
-    hemi.intensity = 0.9 + 0.15 * day;
-    hemi.color.set('#d6e2f5').lerp(new THREE.Color('#7088c8'), nightness);
-    hemi.groundColor.set('#9a7652').lerp(new THREE.Color('#3a3430'), nightness);
-    renderer.toneMappingExposure = 0.6 + nightness * 0.35;
+    hemi.intensity = 0.95 + 0.4 * day;
+    hemi.color.set('#d6e2f5').lerp(new THREE.Color('#9baed4'), nightness);
+    hemi.groundColor.set('#ad9580').lerp(new THREE.Color('#3a3430'), nightness);
+    renderer.toneMappingExposure = 0.76 + nightness * 0.14;
     // Dry-season haze: dust and veld-fire smoke thicken the air toward the horizon
     scene.fog.color.copy(fogDay).lerp(fogDusk, golden * 0.7).lerp(fogNight, nightness);
     scene.fog.density = 0.0002 + golden * 0.00008 + nightness * 0.0001;
@@ -181,25 +207,29 @@ async function init() {
   // --- HUD -------------------------------------------------------------------------------------------------------------
   const help = document.getElementById('help');
   const HELP = {
-    fly: 'Drag to pan · right-drag to orbit · scroll to zoom · WASD to glide · L labels · T advance time · P quality',
+    fly: 'Skyweaver · WASD fly · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
     walk: 'Drag to look · WASD walk · Shift run · Space jump · V camera',
     drive: 'W/S accelerate & reverse · A/D steer · Space brake · keep left!',
   };
   const buttons = [...document.querySelectorAll('.modes button')];
   const setMode = (m) => {
-    controls.setMode(m);
+    if(controls.setMode(m)===false)return;
     buttons.forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
     help.textContent = HELP[m];
+    const landButton=document.querySelector('[data-mode="walk"] .mode-label');
+    if(landButton)landButton.textContent=m==='fly'?'Land':'Walk';
     labels.visible = m === 'fly' && labelsOn;
     labelRenderer.domElement.style.display = labels.visible ? '' : 'none';
   };
+  addEventListener('harare:landing',()=>{help.textContent='Landing… · A/D steer · W move to clear ground · 1 cancel';});
+  addEventListener('harare:landed',e=>setMode(e.detail));
   let labelsOn = true;
   buttons.forEach((b) => b.addEventListener('click', (e) => {
     setMode(b.dataset.mode);
     e.currentTarget.blur();
   }));
   addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT') return;
+    if (/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName) || e.target.closest?.('[popover]:popover-open')) return;
     if (e.code === 'Digit1') setMode('fly');
     if (e.code === 'Digit2') setMode('walk');
     if (e.code === 'Digit3') setMode('drive');
@@ -218,11 +248,11 @@ async function init() {
       applyTime();
     }
   });
-  setMode('fly');
+  setMode('walk');
 
   // Feature modules get one shared context. Fields are stable API for js/features/*.
   const ctx = {
-    THREE, DATA, scene, camera, renderer, post, sun, sky, clouds,
+    THREE, DATA, scene, camera, renderer, post, sun, sky, clouds, detailedCrowd, contacts,
     world, buildings, trees, traffic, people, controls, labels,
     setMode,
     getMode: () => controls.mode,
@@ -264,11 +294,16 @@ async function init() {
   const frameTimes = [];
   let userQuality = false;
   addEventListener('keydown', (e) => e.code === 'KeyP' && (userQuality = true));
+  const shadowFocus = new THREE.Vector3(), shadowRight = new THREE.Vector3(), shadowUp = new THREE.Vector3();
+  const worldUp = new THREE.Vector3(0, 1, 0);
   function frame() {
     const dt = timer.getDelta();
+    contacts.refresh();
     controls.update(dt, nightness);
     traffic.update(dt, nightness);
+    contacts.refresh();
     people.update(dt);
+    detailedCrowd.update(dt);
     for (const f of features) f.update?.(dt, ctx);
     clouds.update(dt, camera);
     sky.position.copy(camera.position); // the sky box travels with you
@@ -284,11 +319,18 @@ async function init() {
 
     // Shadow frustum follows what you're looking at
     const p = controls.position;
-    // Snap focus and span to steps so shadows don't shimmer as the camera moves
-    const focus = new THREE.Vector3(Math.round(p.x / 8) * 8, 0, Math.round(p.z / 8) * 8);
+    // Snap in the light's image plane: world-axis snapping makes shadows jump when driving.
+    const focus = shadowFocus.set(p.x, 0, p.z);
+    const span = controls.mode === 'fly' ? Math.round(Math.min(700, Math.max(200, camera.position.distanceTo(focus))) / 100) * 100 : 130;
+    shadowRight.crossVectors(sunDir, worldUp).normalize();
+    if(shadowRight.lengthSq()<0.01)shadowRight.set(1,0,0);
+    shadowUp.crossVectors(shadowRight,sunDir).normalize();
+    const texel=span*2/sun.shadow.mapSize.x;
+    const sx=focus.dot(shadowRight),sy=focus.dot(shadowUp);
+    focus.addScaledVector(shadowRight,Math.round(sx/texel)*texel-sx);
+    focus.addScaledVector(shadowUp,Math.round(sy/texel)*texel-sy);
     sun.target.position.copy(focus);
-    sun.position.copy(focus).addScaledVector(sunDir, 1200);
-    const span = controls.mode === 'fly' ? Math.round(Math.min(700, Math.max(200, camera.position.distanceTo(focus))) / 100) * 100 : 200;
+    sun.position.copy(focus).addScaledVector(sunDir,1200);
     const sc = sun.shadow.camera;
     if (sc.right !== span) {
       sc.left = sc.bottom = -span;
@@ -303,7 +345,10 @@ async function init() {
     }
 
     post.render();
-    if (labels.visible) labelRenderer.render(scene, camera);
+    if (labels.visible) {
+      labelRenderer.render(scene, camera);
+      if ((declutterT -= dt) < 0) (declutterT = 0.2), declutterLabels();
+    }
   }
   frame();
   renderer.setAnimationLoop(frame);

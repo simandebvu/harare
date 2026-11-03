@@ -16,7 +16,7 @@ export const LAMP = { HEAD: 1, TAIL: 2, IND_FL: 3, IND_FR: 4, IND_RL: 5, IND_RR:
 
 // --- attribute presets ------------------------------------------------------------------------------------------------
 const m = (color, paint, rough, metal, lamp = 0, opt = 0) => ({ color, aMat: [paint, rough, metal, lamp], aDec: [0, 0], aUv: [0, 0], aOpt: opt });
-const PAINT = m(WHITE, 1, 0.32, 0.25);
+const PAINT = m(WHITE, 1, 0.38, 0.06);
 const GLASS_M = m(GLASS, 0, 0.04, 0.0);
 const GLASS_CABIN = m(GLASS, 0, 0.04, 0.0, LAMP.CABIN);
 const TRIM_M = m(TRIM, 0, 0.6, 0.0);
@@ -133,7 +133,7 @@ function body(k, spec, detail) {
   }
   for (const z of spec.extraZ || []) zs.add(z);
   const Z = [...zs].filter((z) => z >= -L / 2 - 1e-6 && z <= L / 2 + 1e-6).sort((a, b) => a - b);
-  const n = detail ? 24 : 10;
+  const n = detail ? 40 : 12;
   const P = Z.map((z) => {
     let yb = spec.bottom ? lerpKeys(spec.bottom, z) : spec.sill;
     for (const az of axles) {
@@ -141,7 +141,15 @@ function body(k, spec, detail) {
       if (d < archR) yb = Math.max(yb, R + Math.sqrt(archR * archR - d * d) * (spec.archTall ?? 1));
     }
     const yt = lerpKeys(spec.top, z);
-    return section(z, lerpKeys(spec.width, z) / 2, Math.min(yb, yt - 0.05), yt, n, spec.eTop, spec.eBot, spec.eSide);
+    const hw = lerpKeys(spec.width, z) / 2;
+    const base = spec.bottom ? lerpKeys(spec.bottom, z) : spec.sill;
+    const pts = section(z, hw, base, yt, n, spec.eTop, spec.eBot, spec.eSide);
+    // Cut the arch into the outer sill only, keeping the chassis level between the wheels.
+    for (const p of pts) {
+      const edge = THREE.MathUtils.smoothstep(Math.abs(p[0]) / hw, 0.72, 0.98);
+      if (p[1] < yb) p[1] += (Math.min(yb, yt - 0.05) - p[1]) * edge;
+    }
+    return pts;
   });
   const cellAt = (i, j) => {
     const a = P[i][j], b = P[i + 1][(j + 1) % n];

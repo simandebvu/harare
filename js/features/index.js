@@ -1,5 +1,10 @@
+import supplyDrop from './supply-drop.js';
+import heroEffects from './hero-effects.js';
 // js/features/index.js — optional feature modules, run in this order. Each owns its file; see main.js for ctx.
+import playMenu from './play-menu.js';
 import game from './game.js';
+import shift from './shift.js';
+import garage from './garage.js';
 import map from './map.js';
 import audio from './audio.js';
 import suburbs from './suburbs.js';
@@ -7,4 +12,4 @@ import furniture from './furniture.js';
 import lighting from './lighting.js';
 import shadows from './shadows.js';
 
-export const features = [game, map, audio, suburbs, furniture, lighting, shadows];
+export const features = [game, map, shift, garage, audio, suburbs, furniture, lighting, shadows, playMenu, heroEffects, supplyDrop];

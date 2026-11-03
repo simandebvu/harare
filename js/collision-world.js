@@ -1,0 +1,93 @@
+import { Grid } from './util.js';
+import { circleBox, boxesOverlap } from './collision.js';
+
+// Visit nearby buckets without allocating a candidate array/Set for every actor.
+function anyNear(grid,x,z,r,visit) {
+  const cell=grid.cell;
+  for(let i=Math.floor((x-r)/cell);i<=Math.floor((x+r)/cell);i++)
+    for(let j=Math.floor((z-r)/cell);j<=Math.floor((z+r)/cell);j++) {
+      const bucket=grid.map.get(grid.key(i,j));
+      if(bucket)for(const body of bucket)if(visit(body))return true;
+    }
+  return false;
+}
+function syncBody(b) {
+  b.x=b.owner.x;b.z=b.owner.z;b.yaw=b.owner.h??b.owner.yaw;
+  b.sin=Math.sin(b.yaw);b.cos=Math.cos(b.yaw);return b;
+}
+function body(car) {
+  return {x:car.x,z:car.z,yaw:car.h??car.yaw,sin:Math.sin(car.h??car.yaw),cos:Math.cos(car.h??car.yaw),
+    hl:(car.len||4.9)/2,hw:(car.width||1.9)/2,owner:car};
+}
+export function createCollisionWorld(traffic, people, controls) {
+  const vehicles=new Grid(8),pedestrians=new Grid(4),statics=new Grid(8);
+  function insertVehicle(car) {
+    const b=body(car),r=Math.hypot(b.hl,b.hw)+4;
+    vehicles.insert(b,b.x-r,b.z-r,b.x+r,b.z+r);
+  }
+  return {
+    addStaticBox(x,z,yaw,hw,hl,height=3) {
+      const b={x,z,yaw,hw,hl,height,sin:Math.sin(yaw),cos:Math.cos(yaw)},r=Math.hypot(hw,hl);
+      statics.insert(b,x-r,z-r,x+r,z+r);
+    },
+    refresh() {
+      vehicles.map.clear();pedestrians.map.clear();
+      for(const car of traffic.cars)if(car.init)insertVehicle(car);
+      for(const car of traffic.parkedCars)insertVehicle(car);
+      if(controls.kombi.visible && !(controls.car.alt>=4.6))insertVehicle(controls.car);
+      for(const list of [people.walkers,people.loiter,people.hawkerList])for(const p of list) {
+        if(Number.isFinite(p.x)&&!p.hidden)pedestrians.insert(p,p.x-.28,p.z-.28,p.x+.28,p.z+.28);
+      }
+      if(controls.mode==='walk') {
+        const p=controls.walk;pedestrians.insert(p,p.x-.3,p.z-.3,p.x+.3,p.z+.3);
+      }
+    },
+    personBlocked(x,z,r,owner,feet=0) {
+      if(anyNear(statics,x,z,r,b=>feet<b.height&&circleBox(x,z,r,b)&&!(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6)))return true;
+      if(feet<1.8&&anyNear(vehicles,x,z,r,b=>{
+        syncBody(b);
+        if(b.owner===owner||!circleBox(x,z,r,b))return false;
+        return !(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6);
+      }))return true;
+      return feet<1.6&&anyNear(pedestrians,x,z,r+.24,p=>{
+        if(p===owner)return false;
+        const d=(x-p.x)**2+(z-p.z)**2;
+        return d<(r+.24)**2&&!(owner&&d>(owner.x-p.x)**2+(owner.z-p.z)**2+1e-6);
+      });
+    },
+    buildingBlocked:(x,z,yaw,hl,hw)=>controls.blocked?.box?.(x,z,yaw,hl,hw)||false,
+    carBlocked(x,z,yaw,hl,hw,owner,withPeople=true) {
+      if(owner!==controls.car&&controls.blocked?.box?.(x,z,yaw,hl,hw))return true;
+      const a={x,z,yaw,hl,hw,sin:Math.sin(yaw),cos:Math.cos(yaw)},r=Math.hypot(hl,hw);
+      if(anyNear(statics,x,z,r,b=>boxesOverlap(a,b)))return true;
+      if(anyNear(vehicles,x,z,r,b=>{
+        syncBody(b);
+        if(b.owner===owner||!boxesOverlap(a,b))return false;
+        const current=owner&&body(owner);
+        return !(current&&boxesOverlap(current,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6);
+      }))return true;
+      return withPeople&&anyNear(pedestrians,x,z,r+.3,p=>p!==owner&&circleBox(p.x,p.z,.28,a));
+    },
+    trafficGap(car,look) {
+      const b=body(car),a={...b,x:b.x+b.sin*look/2,z:b.z+b.cos*look/2,hl:b.hl+look/2};
+      let gap=Infinity;
+      const r=Math.hypot(a.hl,a.hw);
+      anyNear(vehicles,a.x,a.z,r,o=>{
+        syncBody(o);
+        if(o.owner===car||!boxesOverlap(a,o))return false;
+        const along=(o.x-b.x)*b.sin+(o.z-b.z)*b.cos;
+        if(along<=0)return false;
+        const extent=Math.abs(b.sin*o.sin+b.cos*o.cos)*o.hl+Math.abs(b.sin*o.cos-b.cos*o.sin)*o.hw;
+        gap=Math.min(gap,Math.max(0,along-b.hl-extent));return false;
+      });
+      anyNear(pedestrians,a.x,a.z,r+.3,p=>{
+        if(circleBox(p.x,p.z,.3,a)) {
+          const along=(p.x-b.x)*b.sin+(p.z-b.z)*b.cos;
+          if(along>0)gap=Math.min(gap,Math.max(0,along-b.hl-.3));
+        }
+        return false;
+      });
+      return gap;
+    },
+  };
+}

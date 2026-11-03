@@ -6,6 +6,7 @@
 // (render, face brick, precast, granite, mosaic, tin), recessed windows with parallax-mapped rooms behind them,
 // shopfronts and shutters are drawn in the shader. Shop names and billboards come from signs.js.
 import * as THREE from 'three';
+import { boxPolygon, circlePolygon, polygonsOverlap } from './collision.js';
 import { groundY, rng, coreWeight, Grid, polyBounds, pointInPoly, polyCentroid, segDist } from './util.js';
 import { buildingMaterials, LAYER_SCALE } from './building-textures.js';
 import { createSigns } from './signs.js';
@@ -586,7 +587,7 @@ export function buildBuildings(scene, DATA, renderer) {
       }
     }
 
-    footprints.push({ p: ring, h: top, bounds });
+    footprints.push({ p: ring, h: top, bounds, missionRoof: !lm && bd.h >= 15, name: bd.n });
     grid.insert(footprints.length - 1, ...bounds);
     if (bd.n && lm && !labels.some((l) => lm.re.test(l.n))) labels.push({ n: bd.n, x: cx, y: top + 8, z: cz });
   });
@@ -638,9 +639,43 @@ export function buildBuildings(scene, DATA, renderer) {
     return false;
   }
 
+  // Cache provably clear half-metre cells. Near a wall we still test the exact circle.
+  const clearCells=new Map();
+  blocked.circle = (x, z, radius, y = 0) => {
+    if(y===0&&radius<=.45){
+      const ix=Math.floor(x*2),iz=Math.floor(z*2),key=ix*100003+iz;
+      let clear=clearCells.get(key);
+      if(clear===undefined){
+        const cx=(ix+.5)/2,cz=(iz+.5)/2;
+        clear=true;
+        for(const i of grid.queryRadius(cx,cz,.804))if(circlePolygon(cx,cz,.804,footprints[i].p)){clear=false;break;}
+        clearCells.set(key,clear);
+      }
+      if(clear)return false;
+    }
+    for (const i of new Set(grid.queryRadius(x,z,radius))) {
+      const fp=footprints[i];
+      if(x+radius>=fp.bounds[0]&&x-radius<=fp.bounds[2]&&z+radius>=fp.bounds[1]&&z-radius<=fp.bounds[3]&&y <= fp.h && circlePolygon(x,z,radius,fp.p)) return true;
+    }
+    return false;
+  };
+  blocked.box = (x,z,yaw,hl,hw,y=0) => {
+    const p=boxPolygon(x,z,yaw,hl,hw),bounds=polyBounds(p);
+    for (const i of new Set(grid.queryRadius(x,z,Math.hypot(hl,hw)))) {
+      const fp=footprints[i];
+      if(bounds[2]>=fp.bounds[0]&&bounds[0]<=fp.bounds[2]&&bounds[3]>=fp.bounds[1]&&bounds[1]<=fp.bounds[3]&&y <= fp.h && polygonsOverlap(p,fp.p)) return true;
+    }
+    return false;
+  };
+
   return {
     mesh,
     blocked,
+    rooftops: footprints,
+    addRoofDeck(x,z,r,y){
+      const p=[x-r,z-r,x+r,z-r,x+r,z+r,x-r,z+r],bounds=[x-r,z-r,x+r,z+r];
+      footprints.push({p,h:y,bounds});grid.insert(footprints.length-1,...bounds);clearCells.clear();
+    },
     labels,
     spots,
     signs: signMesh.mesh,

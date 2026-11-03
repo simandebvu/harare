@@ -4,14 +4,17 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { groundY } from './util.js';
+import { sweepPose } from './collision.js';
 import { PlayerKombi } from './player-kombi.js';
 import { Player } from './player.js';
+import { createRoadster } from './roadster.js';
+import { Flight } from './game/flight.js';
 import { CameraRig } from './cameras.js';
 
 const WALK_V = 1.7, RUN_V = 5.4, JUMP_V = 4.6, GRAV = 14;
 const DRIVE_MAX = 24, BOOST_MAX = 36, REVERSE_MAX = 7;
 const HALF_L = 2.45, HALF_W = 0.95;
-const HELI_V = 28, HELI_FAST = 85;
+const HELI_V = 24, HELI_FAST = 58;
 
 const _v = new THREE.Vector3(), _look = { x: 0, y: 0 };
 
@@ -99,6 +102,10 @@ export class Controls {
     this.kombi.visible = false;
     scene.add(this.kombi);
     this.car = { x: 60, z: 75, yaw: -Math.PI / 2, v: 0, vx: 0, vz: 0, vl: 0, steer: 0, yawRate: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, boost: false, hoot: 0, lastV: 0, brake: 0, ind: 0, indT: 0 };
+    this.vehicleType='kombi';this.flight=new Flight();
+    this.roadster=createRoadster(scene);this.roadster.root.position.y=-.33;this.roadster.root.visible=false;this.kombiLean.add(this.roadster.root);
+    this.car.len=4.9;this.car.width=1.9;this.car.alt=0;
+    addEventListener('keydown',e=>{if(e.code==='KeyF'&&!e.repeat&&!/INPUT|TEXTAREA|SELECT/.test(e.target?.tagName))this.toggleFlight();});
     this.driven = false;
 
     // Helicopter (free flight)
@@ -113,7 +120,7 @@ export class Controls {
     this.jumpHeld = false;
 
     addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
+      if (/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName) || e.target.closest?.('[popover]:popover-open')) return;
       this.keys.add(e.code);
       if (e.repeat) return;
       if (e.code === 'KeyV') this.rig.next(e.shiftKey ? -1 : 1);
@@ -127,6 +134,7 @@ export class Controls {
   }
 
   onCamera(p) {
+    if(this.vehicleType==='roadster'&&this.mode==='drive'&&p.id==='pov'){this.rig.select('chase');return;}
     this.map.enabled = this.mode === 'fly' && p.id === 'map';
     this.rig.focus = null;
     if (p.id !== 'pov') this.rig.setNear(1);
@@ -137,9 +145,9 @@ export class Controls {
       this.map.target.set(h.x + Math.sin(h.yaw) * 150, 0, h.z + Math.cos(h.yaw) * 150);
       this.map.update();
     }
-    this.player.visible = this.mode === 'walk' && p.id !== 'pov';
+    this.player.visible = (this.mode === 'walk' && p.id !== 'pov') || (this.mode === 'fly' && p.id !== 'map');
     this.cockpit.visible = this.mode === 'drive' && p.id === 'pov';
-    this.kombiBody.visible = !this.cockpit.visible;
+    this.kombiBody.visible = !this.cockpit.visible && this.vehicleType!=='roadster';
     this.onCameraChange?.(p);
   }
 
@@ -163,13 +171,21 @@ export class Controls {
   }
 
   setMode(mode) {
+    if((this.car?.alt||0)>.01 && mode!==this.mode)return false;
     const prev = this.mode;
+    if (this.flightStarted && prev === 'fly' && mode === 'fly') { if(this.heli.phase!=='impact')this.heli.landing = null; return; }
+    if(prev==='fly' && ['charge','impact'].includes(this.heli.phase))return false;
+    if (this.flightStarted && prev === 'fly' && mode !== 'fly' && this.rig.current.id !== 'map' && this.heli.y > groundY(this.heli.x,this.heli.z)+.22) {
+      this.heli.landing = mode;
+      dispatchEvent(new CustomEvent('harare:landing'));
+      return false;
+    }
     this.mode = mode;
     if (document.pointerLockElement) document.exitPointerLock();
     const t = this.map.target;
     const w = this.walk, c = this.car;
     if (mode === 'walk') {
-      if (prev === 'fly') (w.x = t.x), (w.z = t.z);
+      if (prev === 'fly') { w.yaw=this.heli.yaw;this.rig.yaw=w.yaw;w.x=this.rig.current.id==='map'?t.x:this.heli.x;w.z=this.rig.current.id==='map'?t.z:this.heli.z; }
       if (prev === 'drive') {
         // Step out on the kerb side (left of the kombi)
         w.x = c.x + Math.cos(c.yaw) * 1.6;
@@ -182,7 +198,7 @@ export class Controls {
       this.nudgeFree(w);
     }
     if (mode === 'drive') {
-      if (prev === 'fly') (c.x = t.x), (c.z = t.z), (c.v = 0);
+      if (prev === 'fly') (c.x = this.heli.x), (c.z = this.heli.z), (c.yaw=this.heli.yaw), (c.v = 0);
       if (prev === 'walk' && (!this.driven || Math.hypot(w.x - c.x, w.z - c.z) > 30)) {
         c.x = w.x + Math.cos(w.yaw) * 2.5;
         c.z = w.z - Math.sin(w.yaw) * 2.5;
@@ -195,14 +211,16 @@ export class Controls {
       this.rig.yaw = c.yaw;
     }
     if (mode === 'fly') {
+      this.flightStarted=true;
       const src = prev === 'walk' ? w : c;
       // Lift off behind and above the player, looking toward them
       const h = this.heli;
       h.yaw = prev === 'walk' ? this.rig.yaw : c.yaw;
-      h.x = src.x - Math.sin(h.yaw) * 90;
-      h.z = src.z - Math.cos(h.yaw) * 90;
-      h.y = 75;
-      h.pitch = -0.55;
+      h.x = src.x;
+      h.z = src.z;
+      h.y = groundY(src.x,src.z)+.16;
+      h.landing=null;h.bank=0;h.tilt=0;h.phase='charge';h.phaseTime=0;
+      h.pitch = -0.12;
       h.vx = h.vy = h.vz = 0;
       t.set(src.x, 0, src.z);
       this.camera.position.set(src.x + 120, 160, src.z + 180);
@@ -217,6 +235,7 @@ export class Controls {
 
   // Move the active player (walker, kombi or fly target) to (x, z), facing yaw (radians, 0 = south / +z)
   teleport(x, z, yaw) {
+    if(this.car.alt>.01)return false;
     const o = this.mode === 'walk' ? this.walk : this.mode === 'drive' ? this.car : null;
     if (o) {
       o.x = x;
@@ -240,11 +259,14 @@ export class Controls {
     }
   }
 
-  // Spiral outward until we're not standing inside a building
+  // Spawn/teleport clear of walls with room for the actor's whole body.
   nudgeFree(o) {
-    for (let r = 0; r < 200 && this.blocked(o.x, o.z); r += 2) {
-      const a = r * 0.7;
-      if (!this.blocked(o.x + Math.cos(a) * r, o.z + Math.sin(a) * r)) (o.x += Math.cos(a) * r), (o.z += Math.sin(a) * r);
+    const hit=(x,z)=>o===this.car?this.carHits(x,z,o.yaw):this.walkHits(x,z,.3,0,o);
+    if(!hit(o.x,o.z))return;
+    const ox=o.x,oz=o.z;
+    for(let r=.5;r<100;r+=.5)for(let k=0;k<16;k++) {
+      const x=ox+Math.cos(k*Math.PI/8)*r,z=oz+Math.sin(k*Math.PI/8)*r;
+      if(!hit(x,z)){o.x=x;o.z=z;return;}
     }
   }
 
@@ -274,7 +296,7 @@ export class Controls {
     return this.mode === 'drive' ? this.car.boost : this.mode === 'walk' ? this.walk.speed > 3.2 : this.input.run;
   }
   get maxSpeed() {
-    return this.mode === 'drive' ? (this.car.boost ? BOOST_MAX : DRIVE_MAX) : this.mode === 'walk' ? RUN_V : HELI_FAST;
+    return this.mode === 'drive' ? (this.vehicleType==='roadster'?(this.car.boost?44:32):(this.car.boost ? BOOST_MAX : DRIVE_MAX)) : this.mode === 'walk' ? RUN_V : HELI_FAST;
   }
   get altitude() {
     if (this.mode !== 'fly') return 0;
@@ -335,6 +357,7 @@ export class Controls {
       if (preset.id === 'map') this.updateMap(dt);
       else if (preset.id === 'heli') this.updateHeli(dt);
       else this.updateHeli(dt, true), this.rig.update(dt, this.heliTarget(), I);
+      if(preset.id!=='map'){const h=this.heli;this.player.flightAction={phase:h.phase,time:h.phaseTime,landing:!!h.landing};this.player.update(dt,h.x,h.y,h.z,h.yaw,Math.hypot(h.vx,h.vz),false,h.bank,true);}
     } else if (this.mode === 'walk') {
       this.updateWalk(dt);
       const w = this.walk;
@@ -342,7 +365,7 @@ export class Controls {
     } else {
       this.updateDrive(dt);
       const c = this.car;
-      this.rig.update(dt, this.followTarget('drive', c.x, groundY(c.x, c.z) + 0.22, c.z, c.yaw, Math.abs(c.v)), I);
+      this.rig.update(dt, this.followTarget('drive', c.x, groundY(c.x, c.z) + 0.22 + (c.alt||0), c.z, c.yaw, Math.abs(c.v)), I);
     }
     this.updateKombiLamps(dt);
   }
@@ -364,7 +387,7 @@ export class Controls {
 
   heliTarget() {
     const h = this.heli;
-    return this.followTarget('fly', h.x, groundY(h.x, h.z), h.z, h.yaw, 0);
+    return this.followTarget('fly', h.x, h.y, h.z, h.yaw, 0);
   }
 
   updateMap(dt) {
@@ -402,31 +425,61 @@ export class Controls {
       // Arrow-key / A-D-only turning when not strafing with the mouse: A/D yaw, mouse drag strafes are rare in heli
       h.yaw -= I.side * dt * 1.1;
     }
-    const fast = I.run ? HELI_FAST : HELI_V;
+    h.phaseTime=(h.phaseTime||0)+dt;
+    if(h.phase==='charge' && h.phaseTime>=.55){h.phase='launch';h.phaseTime=0;dispatchEvent(new CustomEvent('harare:hero-burst',{detail:{x:h.x,y:groundY(h.x,h.z),z:h.z,kind:'launch'}}));}
+    if(h.phase==='launch' && h.phaseTime>=.65){h.phase='cruise';h.phaseTime=0;}
+    const planted=h.phase==='charge'||h.phase==='impact';
+    const fast = planted ? 0 : h.landing ? 7 : I.run ? HELI_FAST : HELI_V;
     const fx = Math.sin(h.yaw), fz = Math.cos(h.yaw);
-    const up = I.up + (this.keys.has('Space') ? 1 : 0) - (this.keys.has('KeyC') ? 1 : 0);
-    const tx = fx * I.fwd * fast, tz = fz * I.fwd * fast, ty = THREE.MathUtils.clamp(up, -1, 1) * fast * 0.6;
-    const a = Math.min(1, dt * 1.6);
-    h.vx += (tx - h.vx) * a;
-    h.vz += (tz - h.vz) * a;
-    h.vy += (ty - h.vy) * Math.min(1, dt * 2.5);
+    const up = I.up + (I.jump ? 1 : 0) - (this.keys.has('KeyC') ? 1 : 0);
+    const ground = groundY(h.x,h.z)+.16;
+    const clearance=h.y-ground;
+    const tx = fx * I.fwd * fast, tz = fz * I.fwd * fast;
+    let ty=THREE.MathUtils.clamp(up,-1,1)*(I.run?15:8);
+    if(h.landing) ty=-Math.min(18,Math.max(1.2,clearance*3));
+    else if(clearance<2.34 && up>=0)ty=Math.max(ty,(2.34-clearance)*3);
+    // Strong enough to clear shop awnings and first-floor ledges before settling into a hover
+    if(h.phase==='launch')ty=Math.max(ty,24*(1-h.phaseTime/.9));
+    if(planted)ty=0;
+    // Exponential damping keeps handling consistent across frame rates; releasing movement brakes promptly.
+    const a=1-Math.exp(-dt*(I.fwd?2.4:4.8));
+    h.vx+=(tx-h.vx)*a;h.vz+=(tz-h.vz)*a;
+    h.vy+=(ty-h.vy)*(1-Math.exp(-dt*4));
+    if(planted)h.vx=h.vy=h.vz=0;
     let nx = h.x + h.vx * dt, ny = h.y + h.vy * dt, nz = h.z + h.vz * dt;
-    if (this.blocked(nx, nz, ny - 2)) {
-      // Rooftop or wall: try sliding, else stop dead
-      if (!this.blocked(nx, h.z, ny - 2)) nz = h.z, (h.vz = 0);
-      else if (!this.blocked(h.x, nz, ny - 2)) nx = h.x, (h.vx = 0);
-      else (nx = h.x), (nz = h.z), (h.vx = h.vz = 0), (ny = Math.max(ny, h.y));
+    const hit=(x,y,z)=>this.blocked.circle?.(x,z,.45,y)||this.blocked(x,z,y)||this.contacts?.personBlocked(x,z,.45,null,y-groundY(x,z));
+    const steps=Math.max(1,Math.ceil(Math.hypot(nx-h.x,ny-h.y,nz-h.z)/.2));
+    let px=h.x,py=h.y,pz=h.z;
+    for(let i=0;i<steps;i++){
+      const x=px+h.vx*dt/steps,y=py+h.vy*dt/steps,z=pz+h.vz*dt/steps;
+      if(!hit(x,py,pz))px=x;else h.vx=0;
+      if(!hit(px,py,z))pz=z;else h.vz=0;
+      if(!hit(px,y,pz))py=y;else h.vy=0;
     }
+    nx=px;ny=py;nz=pz;
     h.x = nx;
     h.z = nz;
-    h.y = THREE.MathUtils.clamp(ny, groundY(nx, nz) + 2.5, 2500);
+    h.y = THREE.MathUtils.clamp(ny, groundY(nx, nz) + .16, 600);
     // Attitude: bank into turns, tilt with forward acceleration
     const fwdV = h.vx * fx + h.vz * fz;
     h.bank += (I.side * 0.22 - h.bank) * Math.min(1, dt * 3);
     h.tilt += ((tx * fx + tz * fz - fwdV) * -0.004 - h.tilt) * Math.min(1, dt * 3);
+    if(h.landing && h.phase!=='impact' && h.y<=groundY(h.x,h.z)+.22){
+      h.phase='impact';h.phaseTime=0;h.y=groundY(h.x,h.z)+.16;h.vx=h.vy=h.vz=0;
+      dispatchEvent(new CustomEvent('harare:hero-burst',{detail:{x:h.x,y:groundY(h.x,h.z),z:h.z,kind:'land'}}));
+    }
+    if(h.phase==='impact' && h.phaseTime>=.72){
+      const next=h.landing||'walk';h.landing=null;h.phase='cruise';
+      dispatchEvent(new CustomEvent('harare:landed',{detail:next}));return;
+    }
     if (still) return;
-    c.position.set(h.x, h.y, h.z);
-    c.rotation.set(h.pitch + h.tilt, h.yaw + Math.PI, -h.bank, 'YXZ');
+    const speed=Math.hypot(h.vx,h.vz),distance=6+Math.min(2,speed*.035);
+    // A damped chase camera eases through turns; pitch drag now changes the view.
+    _v.set(h.x-fx*distance,h.y+2.2-Math.sin(h.pitch)*distance*.65,h.z-fz*distance);
+    c.position.x+=h.vx*dt;c.position.y+=h.vy*dt;c.position.z+=h.vz*dt;
+    c.position.lerp(_v,1-Math.exp(-dt*7));
+    if(h.phase==='impact')c.position.y+=Math.sin(h.phaseTime*55)*.065*Math.exp(-h.phaseTime*7);
+    c.lookAt(h.x+fx*2,h.y+1+Math.sin(h.pitch)*2,h.z+fz*2);
     this.rig.setFov(60 + Math.min(12, Math.hypot(h.vx, h.vz) * 0.12), dt);
     this.camWritten.copy(c.position);
   }
@@ -434,8 +487,8 @@ export class Controls {
   writeHeliCamera() {
     if (this.mode !== 'fly' || this.rig.current.id !== 'heli') return;
     const h = this.heli, c = this.camera;
-    c.position.set(h.x, h.y, h.z);
-    c.rotation.set(h.pitch, h.yaw + Math.PI, 0, 'YXZ');
+    c.position.set(h.x-Math.sin(h.yaw)*6, h.y+2.2, h.z-Math.cos(h.yaw)*6);
+    c.lookAt(h.x,h.y+1,h.z);
     c.updateMatrixWorld();
     this.camWritten.copy(c.position);
   }
@@ -452,14 +505,15 @@ export class Controls {
     const acc = Math.min(1, dt * (w.air ? 2 : 10));
     w.vx += (mx * vmax - w.vx) * acc;
     w.vz += (mz * vmax - w.vz) * acc;
-    // Collide (radius ~0.3 m) one axis at a time so we slide along walls
-    const r = 0.3;
-    const nx = w.x + w.vx * dt, nz = w.z + w.vz * dt;
-    const feet = w.y - groundY(w.x, w.z);
-    if (!this.blocked(nx + Math.sign(w.vx) * r, w.z, feet) && !this.inKombi(nx, w.z, r, feet)) w.x = nx;
-    else w.vx = 0;
-    if (!this.blocked(w.x, nz + Math.sign(w.vz) * r, feet) && !this.inKombi(w.x, nz, r, feet)) w.z = nz;
-    else w.vz = 0;
+    // Circle against full building footprints and nearby actors; slide at walls.
+    const r = .3, feet = w.y - groundY(w.x,w.z);
+    const blocked = (x,z) => this.walkHits(x,z,r,feet,w);
+    const steps=Math.max(1,Math.ceil(Math.hypot(w.vx,w.vz)*dt/.15));
+    for(let i=0;i<steps;i++) {
+      const nx=w.x+w.vx*dt/steps,nz=w.z+w.vz*dt/steps;
+      if(!blocked(nx,w.z)) w.x=nx; else w.vx=0;
+      if(!blocked(w.x,nz)) w.z=nz; else w.vz=0;
+    }
     // Jump / gravity
     const gy = groundY(w.x, w.z) + 0.16;
     if (!w.air && I.jump && !this.jumpHeld) (w.vy = JUMP_V), (w.air = true), dispatchEvent(new CustomEvent('harare:jump'));
@@ -482,26 +536,42 @@ export class Controls {
     this.player.update(dt, w.x, w.y, w.z, w.yaw, w.air ? 0 : w.speed, w.air, w.turn);
   }
 
+  walkHits(x,z,r,feet=0,owner=null) {
+    return (this.blocked.circle ? this.blocked.circle(x,z,r,feet) : this.blocked(x,z,feet)) ||
+      (this.contacts ? this.contacts.personBlocked(x,z,r,owner,feet) : this.inKombi(x,z,r,feet));
+  }
+
   // Is a walker of radius r at (x, z) inside the parked kombi? (feet above the roof: no — you can stand on it)
   inKombi(x, z, r, feet) {
     if (!this.kombi.visible || feet > 2.0) return false; // walkers can't reach the roof, but cameras can pass over it
     const c = this.car, dx = x - c.x, dz = z - c.z;
     const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
-    return Math.abs(dx * fx + dz * fz) < HALF_L + r && Math.abs(dx * fz - dz * fx) < HALF_W + r;
+    return Math.abs(dx * fx + dz * fz) < (this.car.len/2) + r && Math.abs(dx * fz - dz * fx) < (this.car.width/2) + r;
+  }
+
+  toggleFlight(){if(this.vehicleType==='roadster'&&this.mode==='drive')return this.flight.toggle();return false;}
+  setVehicle(type){
+    if(!['kombi','roadster'].includes(type)||Math.abs(this.car.v)>.5||this.car.alt>.01)return false;
+    if(globalThis.__harare?.ctx?.shift?.state.status==='active')return false;
+    this.vehicleType=type;this.car.len=type==='roadster'?4.3:4.9;this.car.width=1.9;
+    this.roadster.root.visible=type==='roadster';this.roadster.particles.visible=false;this.flight=new Flight();this.car.alt=0;
+    this.onCamera(this.rig.current);this.nudgeFree(this.car);return true;
   }
 
   updateDrive(dt) {
     const c = this.car, I = this.input;
+    const roadster=this.vehicleType==='roadster';
+    if(roadster)c.alt=this.flight.update(dt,this.carHits(c.x,c.z,c.yaw)||this.contacts?.carBlocked(c.x,c.z,c.yaw,c.len/2,c.width/2,c));
     const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
     // Body-frame velocity: forward v, lateral vl (left = (fz, -fx))
     let v = c.vx * fx + c.vz * fz;
     let vl = c.vx * fz - c.vz * fx;
     c.boost = I.run && I.fwd > 0;
-    const vmax = c.boost ? BOOST_MAX : DRIVE_MAX;
+    const vmax = roadster ? (c.boost?44:32) : (c.boost ? BOOST_MAX : DRIVE_MAX);
     const thr = I.fwd;
     if (thr > 0) {
       if (v < -0.5) v += 16 * thr * dt;
-      else v += (c.boost ? 9.5 : 5.8) * thr * dt * Math.max(0, 1 - (v / vmax) ** 2);
+      else v += (roadster?(c.boost?15:10):(c.boost ? 9.5 : 5.8)) * thr * dt * Math.max(0, 1 - (v / vmax) ** 2);
     } else if (thr < 0) {
       if (v > 0.5) v -= 15 * -thr * dt;
       else v = Math.max(-REVERSE_MAX, v - 4.2 * -thr * dt);
@@ -524,6 +594,7 @@ export class Controls {
     // Yaw from bicycle model (wheelbase 2.6 m); handbrake lets the tail come round
     const yawTarget = (v / 2.6) * Math.tan(c.steer) * (hand ? 1.35 : 1);
     c.yawRate += (yawTarget - c.yawRate) * Math.min(1, dt * 7);
+    const oldYaw=c.yaw;
     c.yaw += c.yawRate * dt;
     // Grip: lateral slip decays; low grip on the handbrake or at high boost speed → a little drift
     const grip = hand ? 1.6 : 7 - Math.min(3, Math.max(0, Math.abs(v) - 18) * 0.2);
@@ -535,27 +606,15 @@ export class Controls {
     c.vx = nfx * v + nfz * vl;
     c.vz = nfz * v - nfx * vl;
 
-    // Move with collision: buildings via the footprint test at the leading corners, then other traffic
-    let nx = c.x + c.vx * dt, nz = c.z + c.vz * dt;
-    const impact = this.carHits(nx, nz, c.yaw, v);
-    if (impact) {
-      // Try sliding along one axis before giving up
-      if (!this.carHits(nx, c.z, c.yaw, v)) (nz = c.z), (c.vz *= 0.3);
-      else if (!this.carHits(c.x, nz, c.yaw, v)) (nx = c.x), (c.vx *= 0.3);
-      else {
-        nx = c.x;
-        nz = c.z;
-        if (Math.abs(v) > 6) this.crash(Math.abs(v));
-        c.vx *= -0.25;
-        c.vz *= -0.25;
-      }
-      if (Math.abs(v) > 9) this.crash(Math.abs(v) * 0.5);
-      v = c.vx * nfx + c.vz * nfz;
+    // Sweep the complete rectangle, including the rear corner swinging out in a turn.
+    const hit = p => this.carHits(p.x,p.z,p.yaw) || (c.alt<4.6 && this.contacts?.carBlocked(p.x,p.z,p.yaw,c.len/2,c.width/2,c));
+    const result=sweepPose({x:c.x,z:c.z,yaw:oldYaw},{x:c.x+c.vx*dt,z:c.z+c.vz*dt,yaw:c.yaw},hit);
+    c.x=result.x;c.z=result.z;c.yaw=result.yaw;
+    if(result.hit) {
+      if(Math.abs(v)>5)this.crash(Math.abs(v));
+      c.vx=c.vz=c.yawRate=0;c.brake=1;
     }
-    c.x = nx;
-    c.z = nz;
-    this.bumpTraffic(c, nfx, nfz);
-    c.v = c.vx * nfx + c.vz * nfz;
+    c.v = c.vx * Math.sin(c.yaw) + c.vz * Math.cos(c.yaw);
 
     // Body roll (into the outside of the turn) and pitch (dive on braking, squat on throttle), sprung
     const accel = (c.v - c.lastV) / Math.max(dt, 1e-3);
@@ -567,7 +626,7 @@ export class Controls {
     c.pitchV += ((pitchT - c.pitch) * 80 - c.pitchV * 10) * dt;
     c.pitch += c.pitchV * dt;
 
-    const y = groundY(c.x, c.z) + 0.22;
+    const y = groundY(c.x, c.z) + 0.22 + (c.alt||0);
     this.kombi.position.set(c.x, y, c.z);
     this.kombi.rotation.set(0, c.yaw, 0);
     this.kombiLean.rotation.set(c.pitch, 0, c.roll);
@@ -578,48 +637,14 @@ export class Controls {
     else if ((c.indT -= dt) <= 0) c.ind = 0;
   }
 
-  // Does the kombi overlap a building at (x, z) heading yaw? Probes the leading corners and the sides.
-  carHits(x, z, yaw, v) {
-    const fx = Math.sin(yaw), fz = Math.cos(yaw);
-    const s = v >= 0 ? 1 : -1;
-    const lx = fz, lz = -fx;
-    const L = HALF_L * s;
-    return (
-      this.blocked(x + fx * L + lx * HALF_W, z + fz * L + lz * HALF_W) ||
-      this.blocked(x + fx * L - lx * HALF_W, z + fz * L - lz * HALF_W) ||
-      this.blocked(x + fx * L * 0.1 + lx * HALF_W, z + fz * L * 0.1 + lz * HALF_W) ||
-      this.blocked(x + fx * L * 0.1 - lx * HALF_W, z + fz * L * 0.1 - lz * HALF_W)
-    );
-  }
-
-  // Shove out of other vehicles (each approximated by two circles along its axis), losing speed into them
-  bumpTraffic(c, fx, fz) {
-    const cars = this.traffic?.cars;
-    if (!cars) return;
-    for (let i = 0; i < cars.length; i++) {
-      const o = cars[i];
-      if (!o.init) continue;
-      const dx0 = o.x - c.x, dz0 = o.z - c.z;
-      if (dx0 * dx0 + dz0 * dz0 > 200) continue;
-      const ox = Math.sin(o.h), oz = Math.cos(o.h), oh = (o.len || 4.5) * 0.25;
-      for (let a = -1; a <= 1; a += 2) {
-        for (let b = -1; b <= 1; b += 2) {
-          const px = c.x + fx * 1.25 * a, pz = c.z + fz * 1.25 * a;
-          const qx = o.x + ox * oh * b, qz = o.z + oz * oh * b;
-          const dx = px - qx, dz = pz - qz, d2 = dx * dx + dz * dz, R = 2.0;
-          if (d2 >= R * R || d2 < 1e-6) continue;
-          const d = Math.sqrt(d2), nx = dx / d, nz = dz / d, pen = R - d;
-          c.x += nx * pen;
-          c.z += nz * pen;
-          const vn = c.vx * nx + c.vz * nz;
-          if (vn < 0) {
-            c.vx -= nx * vn * 1.3;
-            c.vz -= nz * vn * 1.3;
-            if (-vn > 5) this.crash(-vn);
-          }
-        }
-      }
+  // A full footprint catches walls crossing the body even when every corner is outside.
+  carHits(x,z,yaw) {
+    const HALF_L=this.car.len/2,HALF_W=this.car.width/2;
+    if(this.blocked.box)return this.blocked.box(x,z,yaw,HALF_L,HALF_W);
+    for(const l of [-HALF_L,0,HALF_L])for(const w of [-HALF_W,0,HALF_W]) {
+      if(this.blocked(x+Math.sin(yaw)*l+Math.cos(yaw)*w,z+Math.cos(yaw)*l-Math.sin(yaw)*w)) return true;
     }
+    return false;
   }
 
   crash(strength) {
@@ -632,6 +657,10 @@ export class Controls {
 
   updateKombiLamps(dt) {
     const pk = this.pk;
+    if(this.vehicleType==='roadster'){
+      if(pk.glow)pk.glow.visible=false;
+      this.roadster.update(dt,this.car.v,this.car.steer,this.car.brake,this.flight);return;
+    }
     if (!pk.shared && this.traffic) pk.attach(this.traffic);
     const c = this.car, night = this.nightness || 0, visible = this.kombi.visible;
     if (!visible) return pk.update(dt, night, 0, 0, 0, 0, c.x, 0, c.z, c.yaw, false);
@@ -642,6 +671,6 @@ export class Controls {
     const brake = driving ? c.brake : 0;
     // Hazards: handbrake on at a standstill, or parked at the kerb while you're out on foot
     const ind = !driving || (c.hand && Math.abs(c.v) < 1) ? 2 : c.ind;
-    pk.update(dt, night, head, brake, ind, 0.8 * night, this.kombi.position.x, this.kombi.position.y, this.kombi.position.z, c.yaw, true);
+    pk.update(dt, night, head, brake, ind, 0.8 * night, this.kombi.position.x, this.kombi.position.y, this.kombi.position.z, c.yaw, true, c.v, c.steer);
   }
 }

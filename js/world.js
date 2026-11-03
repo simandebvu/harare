@@ -1,7 +1,7 @@
 // js/world.js — ground, the Kopje, parks, roads (pavement, asphalt, paint), railway, street lights, Unity Square fountain
 import * as THREE from 'three';
 import { groundY, rng, hash2, coreWeight, Grid, polyCentroid, makeGeometry, KOPJE } from './util.js';
-import { asphaltTexture, pavementTexture, groundTexture } from './textures.js';
+import { asphaltTexture, asphaltSurface, pavementTexture, groundTexture } from './textures.js';
 import { buildLots } from './lots.js';
 
 const ROAD_RANK = { trunk: 6, primary: 5, secondary: 4, tertiary: 3, trunk_link: 3, primary_link: 3, secondary_link: 3, tertiary_link: 3, residential: 2, unclassified: 2, living_street: 2, pedestrian: 1, service: 0 };
@@ -331,9 +331,11 @@ float aNoise(vec2 p) {
         }
       }
     }
+    // Reuse each colour texture as micro-relief; no extra texture allocation.
+    const pavementMap = pavementTexture(renderer), asphaltMap = asphaltTexture(renderer), asphaltData = asphaltSurface(renderer);
     const roadMats = [
-      [pave, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, map: pavementTexture(renderer) })],
-      [asphalt, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, map: asphaltTexture(renderer), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })],
+      [pave, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, map: pavementMap, bumpMap: pavementMap, bumpScale: 0.035 })],
+      [asphalt, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, roughnessMap: asphaltData.roughness, map: asphaltMap, bumpMap: asphaltData.bump, bumpScale: 0.008, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })],
       [paint, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })],
     ];
     for (const [b, mat] of roadMats) {

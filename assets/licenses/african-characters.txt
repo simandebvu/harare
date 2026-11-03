@@ -1,0 +1,14 @@
+Stylized African Male by Shockwave7 (@Nilefox)
+https://sketchfab.com/3d-models/stylized-african-male-dd7ae3a7ea124952a513d85b94be30a8
+License: Sketchfab Free Standard; NoAI tag. Downloaded 2026-10-26. Original GLB, unmodified.
+https://sketchfab.com/licenses
+
+African Female Rigged with Mouth Morphs by Dale.Nolan
+https://sketchfab.com/3d-models/african-female-rigged-with-mouth-morphs-ffd218c1ae864283b8d72394acdb4c45
+License: Creative Commons Attribution 4.0
+https://creativecommons.org/licenses/by/4.0/
+Downloaded 2026-10-26. Original GLB, unmodified.
+
+Game adaptations: male skin binding and CC0 Quaternius animation; female original rig with retargeted CC0 Quaternius animation, scale and materials. Authored textures retained.
+
+Additional game adaptation: skeletal Hover_Loop and Flight_Loop animations authored for both rigs.

@@ -696,6 +696,9 @@ export function buildClutter(ctx, H) {
     scene.add(mesh);
   }
 
+  // Use the same placement and orientation as the rendered instances.
+  for(const [key,hw,hl,height] of [['kiosks',1.2,1.05,2.5],['atms',.75,.75,2.7],['planters',.78,.78,1.6],['zesa',.53,.33,1.4],['telecom',.45,.25,1.5],['bins',.36,.4,1.3],['drums',.43,.43,1.1],['bollards',.14,.14,1],['hydrants',.35,.3,1]])
+    for(const it of L[key])ctx.contacts?.addStaticBox(it.x,it.z,it.yaw||0,hw,hl,height);
   const counts = Object.entries(L).filter(([k]) => !/Fix$/.test(k)).map(([k, v]) => `${v.length} ${k}`);
   return `${counts.join(', ')}, ${tubes.length} scaffold tubes on ${nets.length} buildings, ${wPoles.length} wooden poles, ${wire.length / 6} wire segments, ${fPos.length / 18} sign faces`;
 }

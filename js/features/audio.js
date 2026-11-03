@@ -11,10 +11,10 @@
 import { synthesizeAll, Mixer, glide, VEHICLE_VOICES } from '../audio/mixer.js';
 import { CALL_NAMES } from '../audio/synth.js';
 import { rankLayout } from '../ranks.js';
-import { coreWeight, groundY, pointInPoly, polyBounds } from '../util.js';
+import { coreWeight, groundY, pointInPoly, polyBounds, polyCentroid } from '../util.js';
 
 const STORE = 'harare.audio.muted';
-const MASTER = 1.0;
+const MASTER = 0.8;
 const RANGE = 170; // m: vehicles beyond this get no voice of their own (the rumble bed covers them)
 const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
 const R = Math.random;
@@ -265,7 +265,7 @@ const RANK_CALLS = {
   'Charge Office': ['Kuwadzana', 'Budiriro', 'Mbare', 'Chitungwiza'],
   Copacabana: ['Copa', 'Copa', 'Chitungwiza', 'Town'],
 };
-let ranks = [];
+let ranks = [], fountain = null;
 let gust = 0, gustT = 0;
 function slowTick(dt, now) {
   const h = (env.hour = C.getHour());
@@ -286,6 +286,21 @@ function slowTick(dt, now) {
   const rankNear = clamp(1 - env.rankD / 220);
   const day = 1 - night;
   const B = M.beds;
+  const cabin=C.controls.mode==='drive'&&C.controls.rig.current.id==='pov';
+  glide(M.exterior.frequency,cabin?1800:18000,now,.35);
+  glide(M.exteriorLevel.gain,cabin?.48:1,now,.35);
+  let crowd=0;
+  for(const p of C.people.walkers){if(p.hidden)continue;const d2=(p.x-L.x)**2+(p.z-L.z)**2;if(d2<2500)crowd+=1/(1+d2/64);}
+  for(const p of C.people.loiter){const d2=(p.x-L.x)**2+(p.z-L.z)**2;if(d2<2500)crowd+=1/(1+d2/64);}
+  const crowdNear=clamp(crowd/14);
+  let enclosure=0;
+  for(const [dx,dz] of [[18,0],[-18,0],[0,18],[0,-18]])if(C.buildings.blocked(L.x+dx,L.z+dz,6))enclosure+=.25;
+  stats.cabin=cabin;stats.crowdNear=crowdNear;stats.enclosure=enclosure;
+  if(fountain){
+    M.fountain.panner.positionX.value=fountain[0];M.fountain.panner.positionY.value=groundY(...fountain)+1;M.fountain.panner.positionZ.value=fountain[1];
+    const d=Math.hypot(fountain[0]-L.x,fountain[1]-L.z);
+    glide(M.fountain.gain.gain,d<140?.28*(1-.65*occlusion(fountain[0],1,fountain[1])):0,now,.7);
+  }
 
   // beds
   const dens = clamp(stats.density / 7);
@@ -299,9 +314,9 @@ function slowTick(dt, now) {
   glide(B.wind.g.gain, windy * (0.6 + 0.8 * gust) * (1 - 0.35 * night), now, 1.2);
   glide(B.wind.chain[0].frequency, 320 + 450 * gust + 300 * L.alt, now, 1.5);
   glide(B.gust.g.gain, (0.004 + 0.035 * L.alt) * gust, now, 1.2);
-  glide(B.murmur.g.gain, (0.02 + 0.22 * env.core * env.core + 0.25 * rankNear) * env.act * ground * (1 - 0.6 * night), now, 0.8);
+  glide(B.murmur.g.gain, (0.012 + 0.3 * crowdNear + 0.16 * rankNear) * env.act * ground * (1 - 0.6 * night), now, 0.8);
   glide(B.crickets.g.gain, 0.28 * clamp((night - 0.35) * 2) * (0.2 + 0.8 * env.green) * (1 - 0.65 * env.core) * ground, now, 1.5);
-  glide(M.verbSend.gain, 0.08 + 0.3 * env.core * ground, now, 1);
+  glide(M.verbSend.gain, 0.05 + 0.26 * enclosure * ground, now, 1);
   if (env.rank) {
     const r = env.rank;
     glide(M.rank.panner.positionX, r.x, now, 0.3);
@@ -396,6 +411,10 @@ function updatePlayer(dt, now) {
   if (pTick < 1 / 30) return;
   const tdt = pTick;
   pTick = 0;
+  const electric=mode==='drive'&&ctl.vehicleType==='roadster';
+  glide(M.electricGain.gain,electric?.1+Math.min(.08,ctl.speed*.003):0,now,.1);
+  glide(M.electric.frequency,85+ctl.speed*9,now,.08);
+  glide(M.thrustGain.gain,electric?ctl.flight.thrust*.25:0,now,.1);
   if (mode === 'drive') {
     const v = Math.abs(ctl.speed ?? ctl.car?.v ?? Math.hypot(L.vx, L.vz));
     const acc = (v - pPrevV) / tdt;
@@ -404,7 +423,7 @@ function updatePlayer(dt, now) {
     pLoad += ((throttle ? 1 : 0.15) - pLoad) * Math.min(1, tdt * 5);
     pRate += (engineRate(v, pLoad, false) - pRate) * Math.min(1, tdt * 8);
     glide(M.pSrc.playbackRate, pRate, now, 0.04);
-    glide(M.pEng.gain, 0.45 + 0.35 * pLoad, now, 0.08);
+    glide(M.pEng.gain, electric?0:0.45 + 0.35 * pLoad, now, 0.08);
     glide(M.pFilter.frequency, 700 + pRate * 700 + pLoad * 900, now, 0.08);
     glide(M.pTyre.gain, Math.min(1, v / 18) ** 2 * 0.3, now, 0.1);
   } else {
@@ -464,6 +483,8 @@ export default {
       muted = localStorage.getItem(STORE) === '1';
     } catch {}
     buildMaps(ctx.DATA);
+    const unity=ctx.DATA.areas.find(a=>/Africa Unity|Unity Square/i.test(a.n||''));
+    if(unity)fountain=polyCentroid(unity.p);
     ranks = rankLayout(ctx.DATA).map((r) => ({ n: r.n, x: r.x, z: r.z, r: r.r }));
     raw = synthesizeAll(); // in small slices, in the background
 

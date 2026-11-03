@@ -5,7 +5,8 @@
   "scripts": {
     "serve": "python3 tools/serve.py 8765",
     "data": "node tools/build-data.mjs",
-    "shot": "node tools/shot.mjs"
+    "shot": "node tools/shot.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.0"

@@ -103,14 +103,18 @@ export class Mixer {
     this.master.gain.value = 0;
     this.master.connect(this.limiter).connect(ac.destination);
     this.bed = ac.createGain();
-    this.bed.connect(this.master);
+    this.exterior = ac.createBiquadFilter();
+    this.exterior.type='lowpass';this.exterior.frequency.value=18000;
+    this.exteriorLevel=ac.createGain();
+    this.exterior.connect(this.exteriorLevel).connect(this.master);
+    this.bed.connect(this.exterior);
     this.sfx = ac.createGain();
-    this.sfx.connect(this.master);
+    this.sfx.connect(this.exterior);
     this.verbSend = ac.createGain();
     this.verbSend.gain.value = 0.25;
     this.verb = ac.createConvolver();
     this.verb.buffer = this.B.ir;
-    this.sfx.connect(this.verbSend).connect(this.verb).connect(this.master);
+    this.sfx.connect(this.verbSend).connect(this.verb).connect(this.exterior);
     this.player = ac.createGain();
     this.player.connect(this.master);
     this.player.connect(this.verbSend);
@@ -145,6 +149,12 @@ export class Mixer {
       n.connect(g).connect(this.bed);
       this.beds[name] = { g, chain };
     };
+    // Spatial water wash at the visible Unity Square fountain.
+    this.fountain={gain:gain(),panner:ac.createPanner()};
+    this.fountain.panner.panningModel='HRTF';
+    this.fountain.panner.distanceModel='inverse';
+    this.fountain.panner.refDistance=8;this.fountain.panner.rolloffFactor=1.7;
+    loop(this.B.pink2,1.07).connect(filt('highpass',600)).connect(filt('lowpass',6500)).connect(this.fountain.gain).connect(this.fountain.panner).connect(this.sfx);
     bed('rumble', loop(this.B.brown), filt('lowpass', 160));
     bed('hum', loop(this.B.pink, 0.9), filt('lowpass', 420), filt('highpass', 55));
     bed('wash', loop(this.B.pink2), filt('bandpass', 900, 0.5));
@@ -206,6 +216,9 @@ export class Mixer {
     loop(this.B.babble, 1.07).connect(this.rank.gain);
     this.rank.gain.gain.value = 0;
 
+    this.electric=ac.createOscillator();this.electric.type='triangle';this.electric.frequency.value=85;
+    this.electricGain=gain();this.electric.connect(filt('lowpass',1400)).connect(this.electricGain).connect(this.player);this.electric.start();
+    this.thrustGain=gain();loop(this.B.pink2).connect(filt('bandpass',1800,.6)).connect(this.thrustGain).connect(this.player);
     // --- player engine (non-positional) ---
     this.pEng = gain();
     this.pFilter = filt('lowpass', 1200, 0.6);

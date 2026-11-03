@@ -1,9 +1,6 @@
-// js/player-kombi.js — the player's own kombi drawn exactly like traffic: the sculpted near-detail model
-// (vehicleGeometry('kombi', 1, true)) through the shared clearcoat vehicle material from js/vehicle-render.js (paint,
-// plates and route board from the decal atlas, rack luggage, dust, lamp emission from per-instance lamp state), plus
-// the traffic renderer's own night glow shader (lamp flares, headlight pool, red wash) on a one-instance geometry.
-// A single-instance InstancedMesh with an identity instance matrix, so it can ride inside the controls' lean pivot.
+// Downloaded HiAce with the original traffic mesh as a fallback and shared lamp glows.
 import * as THREE from 'three';
+import { loadKombiModel } from './imported-models.js';
 import { vehicleGeometry, VEHICLE_TYPES, ROUTES } from './vehicles.js';
 import { vehicleMaterial } from './vehicle-render.js';
 
@@ -27,11 +24,21 @@ export class PlayerKombi {
     this.iVar.array.set(this.var);
     geo.setAttribute('iVar', this.iVar);
     geo.setAttribute('iLamp', this.iLamp);
-    this.mesh = new THREE.InstancedMesh(geo, this.ownMat, 1);
-    this.mesh.setMatrixAt(0, new THREE.Matrix4());
-    this.mesh.setColorAt(0, new THREE.Color(look.color ?? '#f2f1ec'));
-    this.mesh.castShadow = this.mesh.receiveShadow = true;
+    this.fallback = new THREE.InstancedMesh(geo, this.ownMat, 1);
+    this.fallback.setMatrixAt(0, new THREE.Matrix4());
+    this.fallback.setColorAt(0, new THREE.Color(look.color ?? '#f2f1ec'));
+    this.fallback.castShadow = this.fallback.receiveShadow = true;
+    this.fallback.name = 'player-kombi-procedural';
+    this.mesh = new THREE.Group();
     this.mesh.name = 'player-kombi';
+    this.mesh.add(this.fallback);
+    this.ready = loadKombiModel().then((model) => {
+      this.imported = model;
+      this.mesh.add(model.root);
+      this.fallback.visible = false;
+      this.dims = [0.66, 0.92, 2.20, 0.95, -2.26, 0.85];
+      console.log('[harare] imported HiAce ready');
+    }).catch((error) => console.warn('[harare] HiAce unavailable; using procedural fallback.', error.message));
     this.glow = null;
     this.shared = false;
     this.dims = VEHICLE_TYPES.kombi.lampDims;
@@ -42,7 +49,7 @@ export class PlayerKombi {
   attach(traffic) {
     if (this.shared || !traffic?.renderer?.material) return;
     this.shared = true;
-    this.mesh.material = traffic.renderer.material;
+    this.fallback.material = traffic.renderer.material;
     this.ownMat.dispose();
     let src = null;
     this.scene.traverse((o) => {
@@ -67,8 +74,9 @@ export class PlayerKombi {
   }
 
   // head, brake (0..1+), indicator (-1 left, 1 right, 2 hazard), cabin light; pose = world x, y, z, yaw; visible
-  update(dt, night, head, brake, ind, cab, x, y, z, yaw, visible) {
+  update(dt, night, head, brake, ind, cab, x, y, z, yaw, visible, speed = 0, steer = 0) {
     this.time += dt;
+    this.imported?.update(dt, head, brake, speed, steer);
     if (!this.shared) {
       this.ownMat.userData.uTime.value = this.time;
       this.ownMat.userData.uDay.value = 0.15 + 0.85 * (1 - night);

@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {Shift} from '../js/game/shift.js';
+const stop=s=>{for(let i=0;i<4;i++)s.tick(1,{distance:0});};
+test('complete outbound and return trips pay fares once at each destination',()=>{const s=new Shift();s.start();stop(s);assert.equal(s.onboard,8);assert.equal(s.target,1);stop(s);assert.equal(s.cash,14);assert.equal(s.delivered,8);assert.equal(s.onboard,0);stop(s);assert.equal(s.target,0);stop(s);assert.equal(s.cash,28);assert.equal(s.trips,2);});
+test('moving or leaving the stop resets boarding',()=>{const s=new Shift();s.start();s.tick(1,{distance:0});s.tick(1,{distance:0,speed:2});assert.equal(s.dwell,0);s.tick(1,{distance:30});assert.equal(s.onboard,0);});
+test('walking and background tabs pause time and fuel',()=>{const s=new Shift();s.start();s.tick(1,{driving:false});s.tick(1,{hidden:true});assert.equal(s.remaining,600);assert.equal(s.fuel,100);});
+test('crashes cost money and reduce comfort with a cooldown',()=>{const s=new Shift();s.start();s.crash(10);s.crash(10);assert.equal(s.repairs,1);assert.equal(s.comfort,90);});
+test('empty fuel and timeout end a shift without another payout',()=>{for(const key of ['remaining','fuel']){const s=new Shift();s.start();s[key]=.001;s.tick(1,{distance:0});assert.equal(s.status,'finished');stop(s);assert.equal(s.cash,0);}});
+test('fast travel ends the shift and restart resets progress',()=>{const s=new Shift();s.start();s.tick(.1,{travel:100});assert.equal(s.status,'finished');s.start();assert.equal(s.status,'active');assert.equal(s.remaining,600);assert.equal(s.repairs,0);});

@@ -50,36 +50,37 @@ function finish(c, renderer) {
 
 // Asphalt: aggregate speckle, tyre-polished bands, tar patches and cracks. Covers 16 m.
 export function asphaltTexture(renderer) {
-  const S = 512, r = rng(5);
+  const S = 1024, r = rng(5);
   const [c, g] = canvas(S);
-  g.fillStyle = '#d8d8d8';
-  g.fillRect(0, 0, S, S);
-  noise(g, S, r, [[40, 90], [160, 25]], 0.08);
-  // patched repairs (darker rectangles of newer tar)
-  for (let i = 0; i < 7; i++) {
-    g.fillStyle = `rgba(40,40,40,${0.15 + r() * 0.2})`;
-    const w = 30 + r() * 110, h = 20 + r() * 70;
-    g.fillRect(r() * S, r() * S, w, h);
+  g.fillStyle = '#cecece';g.fillRect(0,0,S,S);
+  noise(g,S,r,[[70,150],[180,35]],0.055);
+  // Wrap each repair and crack across tile edges so intersections have no texture seams.
+  const wrap=draw=>{for(const x of [-S,0,S])for(const y of [-S,0,S]){g.save();g.translate(x,y);draw();g.restore();}};
+  for(let i=0;i<5;i++){
+    const x=r()*S,y=r()*S,w=35+r()*130,h=25+r()*100;
+    wrap(()=>{g.fillStyle='rgba(45,45,45,0.16)';g.fillRect(x,y,w,h);g.strokeStyle='rgba(35,35,35,0.12)';g.lineWidth=2;g.strokeRect(x,y,w,h);});
   }
-  // potholes
-  for (let i = 0; i < 3; i++) {
-    g.fillStyle = 'rgba(20,18,16,0.55)';
-    g.beginPath();
-    g.ellipse(r() * S, r() * S, 4 + r() * 9, 3 + r() * 6, r() * 3, 0, Math.PI * 2);
-    g.fill();
+  for(let i=0;i<18;i++){
+    let x=r()*S,y=r()*S;const points=[[x,y]];
+    for(let k=0;k<9;k++)points.push([x+=(r()-.5)*30,y+=(r()-.35)*22]);
+    wrap(()=>{g.beginPath();points.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y));g.strokeStyle='rgba(35,33,30,0.38)';g.lineWidth=.8;g.stroke();});
   }
-  // cracks
-  g.strokeStyle = 'rgba(30,30,30,0.45)';
-  g.lineWidth = 1.2;
-  for (let i = 0; i < 14; i++) {
-    let x = r() * S, y = r() * S;
-    g.beginPath();
-    g.moveTo(x, y);
-    for (let k = 0; k < 8; k++) g.lineTo((x += (r() - 0.5) * 40), (y += (r() - 0.5) * 40));
-    g.stroke();
-  }
-  speckle(g, S, r, 26000, 255, 70);
-  return finish(c, renderer);
+  // Fine aggregate, without the oversized stones of the previous road surface.
+  speckle(g,S,r,300000,235,125);
+  return finish(c,renderer);
+}
+
+// Linear data maps: tiny aggregate relief and irregular matte/polished patches.
+export function asphaltSurface(renderer) {
+  const S=512,r=rng(905),[c,g]=canvas(S);
+  g.fillStyle='#bcbcbc';g.fillRect(0,0,S,S);
+  noise(g,S,r,[[65,70],[120,18]],.16,255,95);
+  speckle(g,S,r,90000,220,145);
+  const roughness=finish(c,renderer);roughness.colorSpace=THREE.NoColorSpace;
+  const [h,hg]=canvas(S);hg.fillStyle='#808080';hg.fillRect(0,0,S,S);
+  speckle(hg,S,r,170000,190,65);
+  const bump=finish(h,renderer);bump.colorSpace=THREE.NoColorSpace;
+  return {roughness,bump};
 }
 
 // Concrete pavement slabs (1.2 m) with stains and red dust. Covers 4.8 m.

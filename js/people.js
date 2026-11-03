@@ -2,6 +2,7 @@
 // hawkers who walk out between the cars while the robots are red. Everyone is one GPU-animated instanced mesh
 // (figures.js); this file only decides where they stand and whether they're walking.
 import * as THREE from 'three';
+import { movePedestrian } from './pedestrian-motion.js';
 import { groundY, rng, coreWeight } from './util.js';
 import { createFigures } from './figures.js';
 import { STREET } from './street.js';
@@ -33,6 +34,20 @@ const PAVE = 0.15; // pavement surface height above groundY
 
 export function createPeople(scene, DATA, blocked, count = 2600) {
   const r = rng(314);
+  let contacts=null, deferCommit=false;
+  const solid=(x,z)=>blocked.circle ? blocked.circle(x,z,.42) : blocked(x,z);
+  function clearSpawn(p) {
+    if(!solid(p.x,p.z))return;
+    const ox=p.x,oz=p.z;
+    for(let d=.4;d<20;d+=.4)for(let k=0;k<16;k++) {
+      const x=ox+Math.cos(k*Math.PI/8)*d,z=oz+Math.sin(k*Math.PI/8)*d;
+      if(!solid(x,z)){p.x=x;p.z=z;return;}
+    }
+  }
+  function movePerson(p,x,z) {
+    return movePedestrian(p,x,z,(a,b)=>solid(a,b)||contacts?.personBlocked(a,b,.32,p));
+  }
+
   const G = DATA.graph;
   const edges = G.edges.map((e) => {
     const n = e.p.length / 2;
@@ -207,7 +222,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     const i = F.add(L);
     const idle = r() < 0.45 ? 0 : 1 + Math.floor(r() * 3);
     F.pose(i, 0, idle, 0);
-    return { i, s: sc, b, v, school };
+    return { i, s: sc, b, v, school, look: L };
   }
 
   // --- pedestrians ----------------------------------------------------------------------------------------------------
@@ -312,7 +327,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       const home = h !== undefined && (h < 6 || h > 18.5);
       if (home !== kidsHome) {
         kidsHome = home;
-        for (const p of walkers) if (p.school) F.hide(p.i, home);
+        for (const p of walkers) if (p.school) {p.hidden=home; F.hide(p.i, home);}
       }
     }
     const lights = STREET.lights, st = STREET.time;
@@ -321,6 +336,9 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     // Pavement walkers
     for (let wi = 0; wi < walkers.length; wi++) {
       const p = walkers[wi];
+      if(p.hidden)continue;
+      const oldPath={e:p.e,d:p.d,dir:p.dir};
+      const oldX=p.x,oldZ=p.z;
       let E = edges[p.e];
       let go = 1;
       // Wait at the kerb of a robot junction until traffic going our way has green
@@ -351,16 +369,29 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
         E = edges[p.e];
       }
       sample(p.e, p.d, tmp);
-      const off = (E.w / 2 + 0.8 + p.lat) * p.side;
-      const tx = tmp.x + tmp.tz * off, tz = tmp.z - tmp.tx * off;
-      if (!p.init) (p.x = tx), (p.z = tz), (p.init = true);
+      let off = (E.w / 2 + 0.8 + p.lat) * p.side;
+      let tx = tmp.x + tmp.tz * off, tz = tmp.z - tmp.tx * off;
+      if(solid(tx,tz))for(const lateral of [0,.4,.8,1.2,1.8,2.4,3.2]) {
+        const candidate=(E.w/2+.65+lateral)*p.side;
+        const x=tmp.x+tmp.tz*candidate,z=tmp.z-tmp.tx*candidate;
+        if(!solid(x,z)){p.lat=lateral-.15;tx=x;tz=z;break;}
+      }
+      if (!p.init) {p.x=tx;p.z=tz;p.init=true;clearSpawn(p);}
       const k = Math.min(1, dt * 3);
-      p.x += (tx - p.x) * k;
-      p.z += (tz - p.z) * k;
-      p.yaw = Math.atan2(tmp.tx * p.dir, tmp.tz * p.dir);
+      const dx=tx-p.x,dz=tz-p.z,distance=Math.hypot(dx,dz);
+      const step=Math.min(distance*k,p.v*dt);
+      const moved=movePerson(p,p.x+(distance?dx/distance*step:0),p.z+(distance?dz/distance*step:0));
+      if(!moved){Object.assign(p,oldPath);go=0;p.stuck=(p.stuck||0)+dt;
+        if(p.stuck>1.2&&solid(tx,tz)){p.dir*=-1;p.stuck=0;}
+      }else p.stuck=0;
+      p.actualSpeed=Math.min(p.v,Math.hypot(p.x-oldX,p.z-oldZ)/Math.max(dt,.001));
+      if(p.actualSpeed>.08){
+        const heading=Math.atan2(p.x-oldX,p.z-oldZ),delta=heading-p.yaw;
+        p.yaw+=Math.atan2(Math.sin(delta),Math.cos(delta))*(1-Math.exp(-dt*10));
+      }
       p.amp = ease(p.amp, go, kA);
       F.place(p.i, p.x, groundY(p.x, p.z) + PAVE, p.z, p.yaw, p.s, p.b);
-      F.animate(p.i, p.v * p.amp, 0);
+      F.animate(p.i, p.actualSpeed, 0);
     }
 
     // Stall sellers: mostly still, now and then calling out with a raised hand
@@ -374,14 +405,14 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     // Rank crowds and touts
     for (let k = 0; k < loiter.length; k++) {
       const p = loiter[k];
+      const oldX=p.x,oldZ=p.z;
       p.t -= dt;
       if (p.moving) {
         const dx = p.tx - p.x, dz = p.tz - p.z, d = Math.hypot(dx, dz);
         if (d < 0.15) (p.moving = false), (p.t = 2 + r() * 8);
         else {
           const step = Math.min(d, p.v * 0.75 * dt);
-          p.x += (dx / d) * step;
-          p.z += (dz / d) * step;
+          if(!movePerson(p,p.x+(dx/d)*step,p.z+(dz/d)*step)){p.moving=false;p.t=1;}
           let dh = Math.atan2(dx, dz) - p.yaw;
           p.yaw += Math.atan2(Math.sin(dh), Math.cos(dh)) * Math.min(1, dt * 6);
         }
@@ -390,7 +421,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
         if (r() < roam) {
           const a = r() * 6.283, d = p.kind === 'queue' ? 0.6 : 1.5 + r() * 4;
           const tx = p.ax + Math.cos(a) * d, tz = p.az + Math.sin(a) * d;
-          if (p.rank.clear(tx, tz)) (p.tx = tx), (p.tz = tz), (p.moving = true);
+          if (!solid(tx,tz) && p.rank.clear(tx, tz)) (p.tx = tx), (p.tz = tz), (p.moving = true);
           else p.t = 1;
         } else {
           p.t = 3 + r() * 9;
@@ -398,10 +429,11 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
         }
       }
       const gestT = p.kind === 'tout' ? (Math.sin(time * 0.9 + p.ax) > 0.1 ? 1 : 0) : 0;
+      p.actualSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/Math.max(dt,.001);
       p.amp = ease(p.amp, p.moving ? 1 : 0, kA);
       p.g = ease(p.g, gestT, kA);
       F.place(p.i, p.x, groundY(p.x, p.z) + p.y, p.z, p.yaw, p.s, p.b);
-      F.animate(p.i, p.v * 0.75 * p.amp, p.g);
+      F.animate(p.i, p.actualSpeed, p.g);
     }
 
     // Hawkers: out between the queued cars while their approach is red, back to the kerb before it turns green
@@ -439,17 +471,18 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       h.yaw += Math.atan2(Math.sin(dh), Math.cos(dh)) * Math.min(1, dt * 8);
       h.amp = ease(h.amp, moving ? 1 : 0, kA);
       h.g = ease(h.g, gest, kA);
-      h.x = x;
-      h.z = z;
-      F.place(h.i, x, groundY(x, z) + (Math.abs(h.lat) < E.w / 2 ? 0.26 : PAVE), z, h.yaw, h.s, h.b);
+      if(!Number.isFinite(h.x)){h.x=x;h.z=z;clearSpawn(h);}
+      if(!movePerson(h,x,z)){h.out=false;h.tlat=B.kerb;h.tu=h.home;h.amp=0;}
+      F.place(h.i, h.x, groundY(h.x, h.z) + (Math.abs(h.lat) < E.w / 2 ? 0.26 : PAVE), h.z, h.yaw, h.s, h.b);
       F.animate(h.i, h.v * h.amp, h.g);
     }
 
-    F.commit(time);
+    if(!deferCommit)F.commit(time);
   }
+  for(const p of loiter)clearSpawn(p);
   update(0);
 
-  return { update, walkers, loiter, hawkerList: hawkers, figures: F, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
+  return { deferCommit(){deferCommit=true;}, get time(){return time;}, setContacts: value=>{contacts=value;}, update, walkers, loiter, hawkerList: hawkers, figures: F, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
 }
 
 // Upturned plastic beer crate (0.4 m tall before scaling): slatted sides as dark bands

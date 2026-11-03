@@ -11,7 +11,7 @@ const FOLLOW = [
   { id: 'pov', name: 'Cockpit / POV', type: 'follow' },
 ];
 const FLY = [
-  { id: 'heli', name: 'Helicopter', type: 'fly' },
+  { id: 'heli', name: 'Hero flight', type: 'fly' },
   { id: 'map', name: 'Map view', type: 'fly' },
 ];
 const DRONE = { id: 'drone', name: 'Auto-director drone', type: 'drone' };
@@ -102,6 +102,8 @@ export class CameraRig {
     this.fov = 55;
     this.pos = new THREE.Vector3();
     this.look = new THREE.Vector3();
+    this.followPosition = new THREE.Vector3();
+    this.followLook = new THREE.Vector3();
     this.snapNext = true;
     this.t = 0;
     // Drone
@@ -201,7 +203,7 @@ export class CameraRig {
   }
 
   setFov(f, dt) {
-    const k = dt ? Math.min(1, dt * 3) : 1;
+    const k = dt ? 1 - Math.exp(-dt * 3) : 1;
     this.fov += (f - this.fov) * k;
     if (Math.abs(this.camera.fov - this.fov) > 0.05) {
       this.camera.fov = this.fov;
@@ -217,7 +219,7 @@ export class CameraRig {
 
   // Pull the camera in toward the pivot if a building sits between them
   clearance(px, py, pz, cx, cy, cz) {
-    const steps = 8;
+    const steps = Math.min(100,Math.max(8,Math.ceil(Math.hypot(cx-px,cy-py,cz-pz)/.5)));
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       if (this.blocked(px + (cx - px) * t, pz + (cz - pz) * t, py + (cy - py) * t)) return Math.max(0.15, (i - 1.3) / steps);
@@ -282,9 +284,9 @@ export class CameraRig {
       }
       let d = target - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.yaw = snap ? target : this.yaw + d * Math.min(1, dt * 3.2);
+      this.yaw = snap ? target : this.yaw + d * (1 - Math.exp(-dt * 3.2));
       if (this.userT <= 0) {
-        this.orbitYaw *= Math.max(0, 1 - dt * 1.5);
+        this.orbitYaw *= Math.exp(-dt * 1.5);
         this.pitch += (0.18 - this.pitch) * Math.min(1, dt * 1.2);
       }
     }
@@ -331,23 +333,29 @@ export class CameraRig {
     const hy = walk ? height + spch * dist : height + spch * dist * 0.8;
     const want = _q.set(look.x + ox * dist * cp, t.y + Math.max(0.3, hy), look.z + oz * dist * cp);
     const dWant = this.clearance(look.x, look.y, look.z, want.x, want.y, want.z);
-    this.dist = snap ? dWant : this.dist + (dWant - this.dist) * Math.min(1, dt * (dWant < this.dist ? 14 : 2.5));
+    this.dist = snap ? dWant : this.dist + (dWant - this.dist) * (dWant < this.dist ? 1 : 1 - Math.exp(-dt * 2.5));
     pos.set(look.x + (want.x - look.x) * this.dist, look.y + (want.y - look.y) * this.dist, look.z + (want.z - look.z) * this.dist);
     pos.y = Math.max(pos.y, groundY(pos.x, pos.z) + 0.3);
     this.setFov(fov, snap ? 0 : dt);
-    cam.position.copy(pos);
+    // Gentle follow lag, followed by another wall check so smoothing cannot cross a facade.
+    if(snap || this.followPosition.distanceToSquared(pos)>2500)this.followPosition.copy(pos);
+    else this.followPosition.lerp(pos,1-Math.exp(-dt*(walk?12:8)));
+    const safe=this.clearance(look.x,look.y,look.z,this.followPosition.x,this.followPosition.y,this.followPosition.z);
+    if(safe<1)this.followPosition.lerpVectors(look,this.followPosition,safe);
+    this.followPosition.y=Math.max(this.followPosition.y,groundY(this.followPosition.x,this.followPosition.z)+.3);
+    cam.position.copy(this.followPosition);
     this.applyShake(cam);
-    // Look a little ahead of a moving kombi
     _l.set(look.x + Math.sin(t.yaw) * sp * 0.15, look.y, look.z + Math.cos(t.yaw) * sp * 0.15);
-    cam.lookAt(_l);
+    if(snap)this.followLook.copy(_l);else this.followLook.lerp(_l,1-Math.exp(-dt*10));
+    cam.lookAt(this.followLook);
   }
 
   applyShake(cam) {
     if (this.shake <= 0) return;
-    const s = this.shake * this.shake * 0.35;
-    cam.position.x += (Math.random() - 0.5) * s;
-    cam.position.y += (Math.random() - 0.5) * s;
-    cam.position.z += (Math.random() - 0.5) * s;
+    const s = this.shake * this.shake * 0.18;
+    cam.position.x += Math.sin(this.t * 67) * s;
+    cam.position.y += Math.sin(this.t * 83 + 1) * s;
+    cam.position.z += Math.sin(this.t * 53 + 2) * s;
   }
 
   // Auto-director: changes shot style every ~9 s — wide orbit, low glide alongside, high crane looking down
@@ -381,9 +389,9 @@ export class CameraRig {
     for (let i = 0; i < 12 && this.blocked(_p.x, _p.z, _p.y - 3); i++) _p.y += 8;
     _p.y = Math.max(_p.y, groundY(_p.x, _p.z) + 2);
     _q.set(t.x, ty + (fly ? 0 : 1.2), t.z);
-    if (snap || D.styleT < dt * 1.5) D.pos.copy(_p), D.look.copy(_q);
-    D.pos.lerp(_p, Math.min(1, dt * 1.1));
-    D.look.lerp(_q, Math.min(1, dt * 4));
+    if (snap) D.pos.copy(_p), D.look.copy(_q);
+    D.pos.lerp(_p, 1-Math.exp(-dt*1.1));
+    D.look.lerp(_q, 1-Math.exp(-dt*4));
     // Keep the subject in sight: slide in along the sight line past anything in the way, and stay out of roofs
     const k = this.clearance(_q.x, _q.y, _q.z, D.pos.x, D.pos.y, D.pos.z);
     if (k < 1) D.pos.lerpVectors(_q, D.pos, Math.max(0.12, k));

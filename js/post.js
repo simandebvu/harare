@@ -7,15 +7,16 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { aoHooks } from './ao-hooks.js';
 
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
-    uSat: { value: 1.16 },
+    uSat: { value: 1.06 },
     uWarm: { value: 0.6 },
     uVignette: { value: 0.3 },
-    uContrast: { value: 0.32 },
+    uContrast: { value: 0.16 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -31,7 +32,7 @@ const GradeShader = {
       // warm highlights, slightly cool shadows: dry-season sun through dust
       c *= mix(vec3(1.0), mix(vec3(0.97, 0.99, 1.04), vec3(1.05, 1.0, 0.9), smoothstep(0.1, 0.8, l)), uWarm);
       c = mix(c, c * c * (3.0 - 2.0 * c), uContrast);
-      float v = smoothstep(1.0, 0.25, length((vUv - 0.5) * vec2(1.25, 1.0)));
+      float v = 1.0 - smoothstep(0.25, 0.9, length((vUv - 0.5) * vec2(1.25, 1.0)));
       c *= mix(1.0, v, uVignette);
       gl_FragColor = vec4(c, 1.0);
     }`,
@@ -63,12 +64,16 @@ export function createPost(renderer, scene, camera) {
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.5, 1.0);
   const output = new OutputPass();
   const grade = new ShaderPass(GradeShader);
+  // Resolve thin railings, foliage and distant signs after the colour grade.
+  const fxaa = new ShaderPass(FXAAShader);
+  fxaa.uniforms.resolution.value.set(1 / size.x, 1 / size.y);
 
   composer.addPass(renderPass);
   composer.addPass(gtao);
   composer.addPass(bloom);
   composer.addPass(output);
   composer.addPass(grade);
+  composer.addPass(fxaa);
 
   let quality = 2;
   function setQuality(q) {
@@ -90,13 +95,14 @@ export function createPost(renderer, scene, camera) {
       composer.setSize(w, h);
       // AO re-renders the scene for its normals: do that (and the AO itself) at half resolution
       const pr = renderer.getPixelRatio();
+      fxaa.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
       gtao.setSize(Math.round((w * pr) / 2), Math.round((h * pr) / 2));
     },
     setNight(n) {
-      bloom.strength = 0.12 + n * 0.75;
+      bloom.strength = 0.1 + n * 0.45;
       bloom.threshold = 1.0 - n * 0.25;
-      grade.uniforms.uWarm.value = 0.6 * (1 - n) + 0.15;
-      grade.uniforms.uVignette.value = 0.3 + n * 0.15;
+      grade.uniforms.uWarm.value = 0.32 * (1 - n) + 0.12;
+      grade.uniforms.uVignette.value = 0.16 + n * 0.1;
       gtao.blendIntensity = 1.0 - n * 0.5;
     },
   };
