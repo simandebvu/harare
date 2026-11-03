@@ -208,6 +208,7 @@ export default {
     C = ctx;
     const t0 = performance.now();
     geo = buildGeo(ctx.DATA);
+    ctx.controls.roadSnap = geo.snapToRoad;
     const layers = buildLayers(ctx.DATA);
     minimap = createMinimap($('minimap-canvas'), geo, layers);
     const getPlayer = () => (C.controls.playerState || C.controls.position);

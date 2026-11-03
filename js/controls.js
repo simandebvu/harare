@@ -198,13 +198,8 @@ export class Controls {
       this.nudgeFree(w);
     }
     if (mode === 'drive') {
-      if (prev === 'fly') (c.x = this.heli.x), (c.z = this.heli.z), (c.yaw=this.heli.yaw), (c.v = 0);
-      if (prev === 'walk' && (!this.driven || Math.hypot(w.x - c.x, w.z - c.z) > 30)) {
-        c.x = w.x + Math.cos(w.yaw) * 2.5;
-        c.z = w.z - Math.sin(w.yaw) * 2.5;
-        c.yaw = w.yaw;
-        c.v = 0;
-      }
+      if (prev === 'fly') this.placeCarOnRoad(this.heli.x, this.heli.z, this.heli.yaw);
+      if (prev === 'walk' && (!this.driven || Math.hypot(w.x - c.x, w.z - c.z) > 30)) this.placeCarOnRoad(w.x + Math.cos(w.yaw) * 2.5, w.z - Math.sin(w.yaw) * 2.5, w.yaw);
       c.vx = c.vz = c.vl = 0;
       this.nudgeFree(c);
       this.driven = true;
@@ -283,6 +278,20 @@ export class Controls {
     if (this.mode === 'walk') return this.walk;
     if (this.mode === 'drive') return this.car;
     return this.rig.current.id === 'map' ? this.map.target : this.heli;
+  }
+
+  // A summoned kombi appears in the nearest road's left lane, facing closest to the player's heading, never on the pavement
+  placeCarOnRoad(x, z, yaw) {
+    const c = this.car, r = this.roadSnap?.(x, z);
+    c.v = 0;
+    if (!r || (!r.dx && !r.dz) || Math.hypot(r.x - x, r.z - z) > 60) return void ((c.x = x), (c.z = z), (c.yaw = yaw));
+    const L = Math.hypot(r.dx, r.dz);
+    let dx = r.dx / L, dz = r.dz / L;
+    if (!r.o && Math.sin(yaw) * dx + Math.cos(yaw) * dz < 0) (dx = -dx), (dz = -dz);
+    const off = r.o ? 0 : Math.min(3, r.w / 4);
+    c.x = r.x + dz * off;
+    c.z = r.z - dx * off;
+    c.yaw = Math.atan2(dx, dz);
   }
 
   // Player speed in m/s (for audio / HUD)
