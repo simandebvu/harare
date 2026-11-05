@@ -115,7 +115,8 @@ export default {
     };
 
     const done = new Set();
-    scene.traverse((o) => {
+    // Also handed to late-built geometry (the suburbs) through ctx
+    const patchTree = (root) => root.traverse((o) => {
       const mats = o.isMesh ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) {
         if (!m || done.has(m) || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.isMeshLambertMaterial)) continue;
@@ -135,6 +136,8 @@ export default {
         m.needsUpdate = true;
       }
     });
+    patchTree(scene);
+    ctx.patchLampMaterials = patchTree;
     this.patched = done.size;
     console.log(`[harare] lighting: ${spots.filter((s) => s[4]).length}/${spots.length} street lamps lit, ${done.size} materials patched, ${W}×${H} light map, ${shops} lit shopfronts`);
   },

@@ -35,7 +35,8 @@ export default {
     addEventListener('resize', () => csm.updateFrustums());
 
     const done = new Set();
-    scene.traverse((o) => {
+    // Also handed to late-built geometry (the suburbs) through ctx
+    const patchTree = (root) => root.traverse((o) => {
       const mats = o.isMesh ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) {
         if (!m || done.has(m) || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) continue;
@@ -55,6 +56,8 @@ export default {
         m.needsUpdate = true;
       }
     });
+    patchTree(scene);
+    ctx.patchShadowMaterials = patchTree;
     console.log(`[harare] shadows: CSM ${csm.cascades} cascades to ${csm.maxFar} m, ${done.size} materials`);
   },
 

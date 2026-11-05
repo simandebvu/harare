@@ -56,7 +56,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .icon-sm { width: 14px; height: 14px; }
-.badge { width: 32px; height: 32px; flex: none; border-radius: 8px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 4px 10px rgba(0, 0, 0, 0.35); }
+/* the flag is 2:1: keep its box 2:1 or the stripes and triangle distort */
+.badge { width: 40px; height: 20px; flex: none; border-radius: 3px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 3px 8px rgba(0, 0, 0, 0.35); }
 
 kbd {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
@@ -291,10 +292,39 @@ body.ui-hidden .label { opacity: 0; }
 #loading { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 38%, #1d1a20 0%, #0d0c0f 58%, #060607 100%); transition: opacity 0.7s ease, visibility 0.7s; }
 #loading.done { opacity: 0; visibility: hidden; pointer-events: none; }
 .loader { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 var(--edge); animation: rise 0.8s var(--ease-out) both; }
-.loader-badge { width: 60px; height: 60px; border-radius: 15px; margin-bottom: 20px; }
-.loader-title { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
-.loader-sub { margin-top: 4px; font-size: 13.5px; color: var(--text-2); }
-.loader-track { position: relative; width: min(280px, 70vw); height: 4px; margin: 26px 0 12px; border-radius: 4px; overflow: hidden; background: rgba(255, 255, 255, 0.1); }
+/* waving flag: strips of the same flag ride one wave, each a beat behind the last (index.html builds them) */
+.loader-flag { position: relative; width: 176px; height: 88px; margin: 0 0 34px 14px; }
+.loader-pole { position: absolute; left: -12px; top: -10px; bottom: -22px; width: 5px; border-radius: 3px; background: linear-gradient(90deg, #8d8f94, #e6e7ea 45%, #6c6e73); }
+.loader-pole::before { content: ''; position: absolute; left: -3px; top: -6px; width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff4c4, var(--gold) 55%, #9c7a12); }
+.loader-cloth { position: absolute; inset: 0; }
+/* --a runs 0 at the pole to 1 at the fly end: the hoist stays put and the wave grows toward the free edge */
+.loader-cloth .strip { position: absolute; top: 0; height: 100%; overflow: hidden; animation: flag-wave 1.7s ease-in-out infinite; animation-delay: calc(var(--i) * -0.045s); }
+.loader-cloth svg { position: absolute; top: 0; height: 100%; display: block; }
+@keyframes flag-wave {
+  0%, 100% { transform: translateY(calc(var(--a) * -5px)); filter: brightness(calc(1 + var(--a) * 0.12)); }
+  50% { transform: translateY(calc(var(--a) * 5px)); filter: brightness(calc(1 - var(--a) * 0.24)); }
+}
+.loader-road { position: relative; width: min(320px, 78vw); margin: 54px 0 12px; }
+.loader-track { position: relative; height: 6px; border-radius: 4px; overflow: hidden; background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 10px, transparent 10px 20px), #24232a; }
+/* the kombi drives along the bar; --p is the bar's percentage */
+.loader-kombi { position: absolute; bottom: 4px; left: calc(var(--p, 6) * 1%); width: 64px; margin-left: -58px; padding: 0; border: 0; background: none; cursor: pointer; transition: left 0.45s var(--ease-out); }
+.loader-kombi svg { display: block; width: 100%; animation: kombi-bob 0.42s ease-in-out infinite alternate; }
+.loader-kombi .wheel { transform-box: fill-box; transform-origin: center; animation: wheel-spin 0.5s linear infinite; }
+.loader-kombi:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 6px; }
+.loader-hoot { position: absolute; right: -6px; top: -20px; font: 800 12px/1 var(--font-sans); color: var(--gold); opacity: 0; pointer-events: none; white-space: nowrap; }
+.loader-kombi.hooting .loader-hoot { animation: hoot 0.9s var(--ease-out); }
+.loader-kombi.hooting svg { animation: kombi-hop 0.3s ease-out 2; }
+@keyframes kombi-bob { to { transform: translateY(-1.5px); } }
+@keyframes wheel-spin { to { transform: rotate(360deg); } }
+@keyframes kombi-hop { 50% { transform: translateY(-4px) rotate(-2deg); } }
+@keyframes hoot { 0% { opacity: 0; transform: translate(0, 4px) scale(0.8); } 25% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translate(6px, -10px); } }
+.loader-quip, .loader-fact { margin: 0; max-width: min(360px, 84vw); opacity: 0; transform: translateY(4px); transition: opacity 0.26s, transform 0.26s; }
+.loader-quip.in, .loader-fact.in { opacity: 1; transform: none; }
+.loader-quip { margin-top: 14px; font-size: 14px; font-weight: 600; color: var(--text); min-height: 1.5em; }
+.loader-fact { margin-top: 18px; font-size: 12.5px; line-height: 1.5; color: var(--text-3); min-height: 3em; }
+@media (prefers-reduced-motion: reduce) {
+  .loader-cloth .strip, .loader-kombi svg, .loader-kombi .wheel { animation: none; }
+}
 #loading-bar { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--zw-green), var(--gold) 60%, #fff3c2); transition: width 0.45s var(--ease-out); }
 #loading-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent); animation: shimmer 1.3s linear infinite; }
 #loading small { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; min-height: 1.4em; }
@@ -317,7 +347,7 @@ body.ui-hidden .label { opacity: 0; }
 @media (max-width: 640px) {
   :root { --edge: 16px; --radar: 132px; }
   .brand { padding: 5px 10px 5px 5px; gap: 8px; border-radius: 13px; }
-  .badge { width: 28px; height: 28px; border-radius: 7px; }
+  .badge { width: 34px; height: 17px; border-radius: 2px; }
   .title { font-size: 13.5px; }
   .brand-sub { font-size: 10.5px; }
   .brand-sub .bs-extra { display: none; }

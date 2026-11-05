@@ -11,14 +11,14 @@
 //   runway lights, distant Chitungwiza glow, headlight dots on the main roads — and ZESA load-shedding: a few
 //   suburbs go dark, block by block, on a rotating two-hour schedule
 // The CBD bbox (SUB.bbox) is a hole in all of it: js/world.js and friends own everything inside.
-import { SUB } from '../suburbs-data.js';
 import { groundY } from '../util.js';
 
 let THREE;
 const EXT = 12288; // carpet half-size (m)
 const RES = 2048; // class-map texels per side (12 m)
 const PX = (2 * EXT) / RES;
-const [BX0, BZ0, BX1, BZ1] = SUB.bbox;
+// SUB (js/suburbs-data.js, ~0.8 MB) is imported in the background once the CBD is on screen; see init()
+let SUB, BX0, BZ0, BX1, BZ1;
 const CLS = { none: 0, res: 1, ind: 2, com: 3, park: 4, golf: 5, wood: 6, water: 7, vlei: 8, farm: 9, cem: 10, aero: 11, apron: 12, rail: 13, bare: 14, inst: 15, pitch: 16, mil: 17 };
 const RWIDTH = [16, 14, 12, 10, 7, 7.5]; // match js/world.js so the CBD's own ribbons line up where both exist
 
@@ -173,8 +173,18 @@ class Hash {
 
 // =====================================================================================================================
 export default {
-  async init(ctx) {
+  // Greater Harare builds after the CBD is playable: the data downloads in the background and the build yields between
+  // its stages so the city keeps rendering (it used to hold the loading screen for ~3 s).
+  init(ctx) {
     THREE = ctx.THREE;
+    this.ready = this.build(ctx).catch((e) => console.warn('[harare] suburbs failed', e));
+  },
+
+  async build(ctx) {
+    ({ SUB } = await import('../suburbs-data.js'));
+    [BX0, BZ0, BX1, BZ1] = SUB.bbox;
+    const pause = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+    let busy = 0;
     const t0 = performance.now();
     const group = new THREE.Group();
     group.name = 'suburbs';
@@ -210,6 +220,9 @@ export default {
     };
     const lines = SUB.lines.map(([k, w, p]) => ({ k, w, p: dec(p) }));
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 2. Land-cover class map + density map
     // ---------------------------------------------------------------------------------------------------------------
@@ -333,6 +346,9 @@ export default {
     tAux.generateMipmaps = true;
     tAux.needsUpdate = true;
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 3. Carpet mesh: a graded grid with the CBD bbox cut out; surfY() = the triangulated surface, so ribbons and houses
     //    sit exactly on what's drawn
@@ -397,6 +413,9 @@ export default {
       group.add(carpet);
     }
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 4. Ribbons: roads (verge, asphalt), rivers, rail, runway
     // ---------------------------------------------------------------------------------------------------------------
@@ -514,6 +533,9 @@ export default {
       group.add(m);
     }
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 5. Buildings: houses along the streets by neighbourhood, sheds in industrial zones, shops, flats, OSM footprints
     // ---------------------------------------------------------------------------------------------------------------
@@ -835,6 +857,9 @@ export default {
       }
     }
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 6. Trees: street trees on the leafy avenues (jacarandas in flower), garden trees, woodland, golf courses, veld
     // ---------------------------------------------------------------------------------------------------------------
@@ -998,6 +1023,9 @@ export default {
       }
     }
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 7. National Sports Stadium bowl, kopje boulders
     // ---------------------------------------------------------------------------------------------------------------
@@ -1043,6 +1071,9 @@ export default {
       group.add(bm);
     }
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 8. Horizon: a ring of distant ground rising into granite domes and ridges (Domboshava, Ngomakurira, the Iron
     //    Mask range toward Mazowe, Seke), with its own thinner fog so the hill-tops stand out of the haze
@@ -1131,6 +1162,9 @@ export default {
       group.add(ring);
     }
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 9. Night lights: one additive point cloud. kind 0 street · 1 house · 2 high-mast · 3 airport (own supply) · 4 far
     // ---------------------------------------------------------------------------------------------------------------
@@ -1269,6 +1303,9 @@ export default {
       group.add(pts);
     }
 
+    busy += performance.now() - (this._t || t0);
+    await pause();
+    this._t = performance.now();
     // ---------------------------------------------------------------------------------------------------------------
     // 10. Traffic on the main roads: boxes by day, head- and tail-light dots by night; each car loops its own segment
     // ---------------------------------------------------------------------------------------------------------------
@@ -1410,11 +1447,15 @@ export default {
     this.chunks = chunks;
     this.counts = { buildings: nB, trees: nT, lights: L.pos.n / 3 };
     this.acc = 1;
-    console.log(`[harare] suburbs: ${roads.length} roads, ${nB} buildings, ${nT} trees, ${L.pos.n / 3} lights, ${this.carCount} cars, ${chunks.length} chunks in ${Math.round(performance.now() - t0)} ms`);
+    ctx.patchLampMaterials?.(group);
+    ctx.patchShadowMaterials?.(group);
+    this.built = true;
+    busy += performance.now() - (this._t || t0);
+    console.log(`[harare] suburbs: ${roads.length} roads, ${nB} buildings, ${nT} trees, ${L.pos.n / 3} lights, ${this.carCount} cars, ${chunks.length} chunks in ${Math.round(busy)} ms of work over ${Math.round(performance.now() - t0)} ms`);
   },
 
   update(dt, ctx) {
-    if (!this.U) return;
+    if (!this.built) return;
     const U = this.U;
     U.uTime.value += dt;
     // the sky box is only 10 km across: keep it centred on the camera so the suburbs never fly out of it
