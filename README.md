@@ -18,7 +18,7 @@ npm run serve   # python3 -m http.server 8765 → http://localhost:8765
 
 You start on foot on Jason Moyo Avenue, next to your kombi. Keys: `1` fly · `2` walk · `3` drive · `R` context action
 (enter/exit the kombi, take off, land) · `V` cycle cameras · `H` hooter · `Shift` run/boost · `M` street atlas · `L`
-labels · `U` hide UI · `N` mute · `P` quality · `T` advance time. Gamepad and touch work too.
+labels · `U` hide UI · `N` sound on/off (starts muted; also the 🔇 button) · `P` quality · `T` advance time. Gamepad and touch work too.
 
 Two missions sit top-left: a **taxi shift** (pick up and drop off passengers for fares, in the HiAce or the Vela X1
 roadster from *Choose your ride*) and a **supply drop** (fly a package to a rooftop target). **Character & options**

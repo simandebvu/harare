@@ -7,7 +7,7 @@
 //           doves), frogs and Avenues dogs at night, touts calling destinations at the ranks
 //   player  your kombi's engine follows your speed; hooter on 'harare:hoot', footsteps on 'harare:step' (or our own
 //           cadence when nobody dispatches them)
-// Audio starts on the first click / key / touch. N toggles mute (persisted); window.__harareAudio for the HUD.
+// Audio starts muted; N or the HUD speaker button turns it on (persisted). window.__harareAudio for the HUD.
 import { synthesizeAll, Mixer, glide, VEHICLE_VOICES } from '../audio/mixer.js';
 import { CALL_NAMES } from '../audio/synth.js';
 import { rankLayout } from '../ranks.js';
@@ -480,7 +480,8 @@ export default {
   init(ctx) {
     C = ctx;
     try {
-      muted = localStorage.getItem(STORE) === '1';
+      // Silent until the visitor turns sound on (N or the speaker button); that choice is remembered
+      muted = localStorage.getItem(STORE) !== '0';
     } catch {}
     buildMaps(ctx.DATA);
     const unity=ctx.DATA.areas.find(a=>/Africa Unity|Unity Square/i.test(a.n||''));
