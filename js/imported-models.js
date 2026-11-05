@@ -33,7 +33,7 @@ export async function loadPlayerModel(character = 'male') {
     }
   });
   const mixer = new THREE.AnimationMixer(gltf.scene);
-  const required = { idle: 'Idle_Loop', walk: 'Walk_Loop', run: 'Jog_Fwd_Loop', jump: 'Jump_Loop', hover: 'Hover_Loop', flight: 'Flight_Loop', brace: 'Brace_Loop', takeoff: 'Takeoff', touchdown: 'Touchdown' };
+  const required = { idle: 'Idle_Loop', walk: 'Walk_Loop', run: 'Sprint_Loop', jump: 'Jump_Loop', hover: 'Hover_Loop', flight: 'Flight_Loop', brace: 'Brace_Loop', takeoff: 'Takeoff', touchdown: 'Touchdown' };
   const actions = {};
   for (const [state, name] of Object.entries(required)) {
     const clip = THREE.AnimationClip.findByName(gltf.animations, name);
@@ -46,6 +46,7 @@ export async function loadPlayerModel(character = 'male') {
   let moving = 0, running = 0, jumping = 0, gaitPhase=0, flightBlend=0, cruise=0, bank=0, clock=0, brace=0, sequenceWeight=0, lastSequence='takeoff';
   return {
     root,
+    get gait() { return gaitPhase; },
     update(dt, x, y, z, yaw, speed, airborne, lean, powered=false, flightAction=null) {
       // Smooth clip weights; leaving the ground does not snap back to an idle pose.
       const k = 1 - Math.exp(-12 * dt);
@@ -84,7 +85,8 @@ export async function loadPlayerModel(character = 'male') {
       actions.run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 4.2, 0.65, 1.6));
       // Keep both locomotion clips at the same footfall phase during crossfades.
       // Independently advancing loops previously blended opposing legs into a wobble.
-      gaitPhase=(gaitPhase+Math.min(dt,.1)*speed/THREE.MathUtils.lerp(1.55,2.8,running))%1;
+      // Metres per gait cycle: the sprint clip covers ~6 m natively, so 5 m at RUN_V plays it at ~0.83x with little foot slip
+      gaitPhase=(gaitPhase+Math.min(dt,.1)*speed/THREE.MathUtils.lerp(1.55,5.0,running))%1;
       actions.walk.time=gaitPhase*actions.walk.getClip().duration;
       actions.run.time=gaitPhase*actions.run.getClip().duration;
       actions.walk.setEffectiveTimeScale(0);actions.run.setEffectiveTimeScale(0);

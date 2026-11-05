@@ -11,7 +11,7 @@ import { createRoadster } from './roadster.js';
 import { Flight } from './game/flight.js';
 import { CameraRig } from './cameras.js';
 
-const WALK_V = 1.7, RUN_V = 5.4, JUMP_V = 4.6, GRAV = 14;
+const WALK_V = 1.7, RUN_V = 6.2, JUMP_V = 4.6, GRAV = 14;
 const DRIVE_MAX = 24, BOOST_MAX = 36, REVERSE_MAX = 7;
 const HALF_L = 2.45, HALF_W = 0.95;
 const HELI_V = 24, HELI_FAST = 58;

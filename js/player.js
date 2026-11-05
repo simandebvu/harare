@@ -98,8 +98,9 @@ export class Player {
     else if (airborne) this.phase += dt * 3; // drift so we don't freeze mid-stride
     if (this.phase > TAU * 1e4) this.phase -= TAU * 1e4;
 
-    // Footfalls: each half-cycle a heel strikes (left at cycle 0, right at 0.5)
-    const idx = Math.floor(this.phase / Math.PI);
+    // Footfalls: each half-cycle a heel strikes (left at cycle 0, right at 0.5); the imported hero's own gait clock
+    // drives them when it is shown, so the sound lands with the visible feet
+    const idx = this.imported ? Math.floor(this.imported.gait * 2) : Math.floor(this.phase / Math.PI);
     if (idx !== this.stepIdx) {
       this.stepIdx = idx;
       if (!powered && !airborne && speed > 0.4) dispatchEvent(new CustomEvent('harare:step', { detail: { run: speed > 3.2 } }));
