@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { gltfLoader } from './gltf-loader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { groundY } from './util.js';
 
@@ -9,7 +9,7 @@ export function createCrowdModels(scene,people,camera) {
   const frustum=new THREE.Frustum(),matrix=new THREE.Matrix4(),sphere=new THREE.Sphere(new THREE.Vector3(),2);
   const ready=Promise.all(['player','pedestrian-female'].map(async(file,sex)=>{
     try {
-      const g=await new GLTFLoader().loadAsync(new URL(`../assets/models/${file}.glb`,import.meta.url).href);
+      const g=await gltfLoader.loadAsync(new URL(`../assets/models/${file}.glb`,import.meta.url).href);
       for(let i=0;i<20;i++) {
         const root=clone(g.scene),materials=new Map();root.name=`detailed-pedestrian-${sex}-${i}`;root.visible=false;
         root.traverse(o=>{

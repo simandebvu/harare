@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { VEHICLE_TYPES } from './vehicles.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { gltfLoader } from './gltf-loader.js';
 const files={fit:'fit',sedan:'sedan',police:'police',kombi:'hiace'};
 const cache=new Map();
 function asset(name) {
-  if(!cache.has(name))cache.set(name,new GLTFLoader().loadAsync(new URL(`../assets/models/${name}.glb`,import.meta.url).href));
+  if(!cache.has(name))cache.set(name,gltfLoader.loadAsync(new URL(`../assets/models/${name}.glb`,import.meta.url).href));
   return cache.get(name);
 }
 export function createTrafficModels(scene,capacities) {

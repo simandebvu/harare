@@ -1,8 +1,8 @@
 // Local, licensed hero assets. The city keeps its lightweight crowd/traffic meshes.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { gltfLoader } from './gltf-loader.js';
 
-const loader = new GLTFLoader();
+const loader = gltfLoader;
 const assetURL = (name) => new URL(`../assets/models/${name}`, import.meta.url).href;
 
 function prepare(root) {

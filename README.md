@@ -39,6 +39,7 @@ switches the hero between male and female.
 | `js/controls.js` · `js/cameras.js` · `js/player.js` | Drive / walk / helicopter, camera rig, player character |
 | `js/post.js` · `js/clouds.js` | GTAO, bloom, colour grade, clouds |
 | `js/features/*` | Plug-ins with `init(ctx)` / `update(dt, ctx)`: game HUD, map + atlas (`js/hud/`), audio (`js/audio/`), suburbs, furniture, lamp lighting |
+| `tools/compress-models.sh` | WebP textures + meshopt geometry for `assets/models/*.glb` (run after any `tools/prepare-*.py` export) |
 | `tools/shot.mjs` | Headed-Chromium screenshots for checking changes (`npm run shot -- name shot`) |
 
 ## Refresh the map data
