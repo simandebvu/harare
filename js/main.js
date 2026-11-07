@@ -211,9 +211,9 @@ async function init() {
   // --- HUD -------------------------------------------------------------------------------------------------------------
   const help = document.getElementById('help');
   const HELP = {
-    fly: 'Skyweaver · WASD fly · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
-    walk: 'Drag to look · WASD walk · Shift run · Space jump · V camera',
-    drive: 'W/S accelerate & reverse · A/D steer · Space brake · keep left!',
+    fly: 'Skyweaver · click to mouse-look · WASD fly · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
+    walk: 'Click to mouse-look (Esc frees the cursor) · WASD walk · Shift run · Space jump · V camera',
+    drive: 'Click to mouse-look · W/S accelerate & reverse · A/D steer · Space brake · keep left!',
   };
   const buttons = [...document.querySelectorAll('.modes button')];
   const setMode = (m) => {
@@ -282,6 +282,16 @@ async function init() {
     toastT = 1.5;
   };
   const where = document.getElementById('where');
+  // Mouse-look (js/cameras.js) captures the cursor: say so, and how to get it back
+  const toast = document.getElementById('toast');
+  let toastHide = 0;
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement !== renderer.domElement) return;
+    toast.textContent = 'Mouse-look on · Esc frees the cursor';
+    toast.classList.add('show');
+    clearTimeout(toastHide);
+    toastHide = setTimeout(() => toast.classList.remove('show'), 2600);
+  });
   let whereT = 0;
 
   addEventListener('resize', () => {

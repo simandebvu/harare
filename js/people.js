@@ -44,8 +44,12 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       if(!solid(x,z)){p.x=x;p.z=z;return;}
     }
   }
+  // Street furniture only matters where it can be seen: beyond NEAR of the camera pedestrians skip it
+  const NEAR2 = 120 * 120;
+  let camX = 0, camZ = 0;
   function movePerson(p,x,z) {
-    return movePedestrian(p,x,z,(a,b)=>solid(a,b)||contacts?.personBlocked(a,b,.32,p));
+    const near=(p.x-camX)**2+(p.z-camZ)**2<NEAR2;
+    return movePedestrian(p,x,z,(a,b)=>solid(a,b)||contacts?.personBlocked(a,b,.32,p,0,near));
   }
 
   const G = DATA.graph;
@@ -320,6 +324,8 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   function update(dt) {
     dt = Math.min(dt, 0.1);
     time += dt;
+    const cam = globalThis.__harare?.ctx?.camera?.position;
+    if (cam) (camX = cam.x), (camZ = cam.z);
     // School uniforms on the streets by day only
     if ((hourT -= dt) < 0) {
       hourT = 1;

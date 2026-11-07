@@ -9,8 +9,8 @@ const LABELS = {
 };
 const KEYS = {
   drive: '<kbd>W</kbd><kbd>S</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> brake · <kbd>Shift</kbd> boost · <kbd>H</kbd> hoot',
-  walk: '<kbd>WASD</kbd> walk · drag to look · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump',
-  fly: '<kbd>WASD</kbd> fly · <kbd>Q</kbd><kbd>E</kbd> down / up · drag to look · <kbd>Shift</kbd> fast',
+  walk: '<kbd>WASD</kbd> walk · click to look · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump',
+  fly: '<kbd>WASD</kbd> fly · <kbd>Q</kbd><kbd>E</kbd> down / up · click to look · <kbd>Shift</kbd> fast',
 };
 const TOUCH_ACTIONS = {
   drive: [['brake', 'Brake'], ['run', 'Boost'], ['hoot', 'Hoot']],
@@ -194,9 +194,6 @@ export default {
       ui.root.dataset.mode = mode;
       ui.keys.innerHTML = KEYS[mode];
       setTouchActions(ctx, mode);
-      // main.js's walk hint predates the third-person walker (pointer lock, Q/E turn): correct it if it's still that one
-      const help = document.getElementById('help');
-      if (help && /Esc release mouse/.test(help.textContent)) help.textContent = 'Drag to look · WASD walk · Shift run · Space jump · V camera';
     }
     // Labels
     let label = LABELS[mode][0], tag = LABELS[mode][1];

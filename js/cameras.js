@@ -152,11 +152,29 @@ export class CameraRig {
     };
     for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(t, up);
     el.addEventListener('contextmenu', (e) => this.wantsPointer() && e.preventDefault());
+    // Mouse-look: a left click on the city captures the mouse (Pointer Lock); moving it then turns the camera with no
+    // button held. Esc is the browser's own way out. Map view keeps the free cursor for MapControls.
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || !this.wantsPointer() || document.pointerLockElement === el) return;
+      try { el.requestPointerLock()?.catch?.(() => {}); } catch {}
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement !== el) return;
+      // the first event after locking can carry a huge jump: clamp each one
+      this.lookDX += THREE.MathUtils.clamp(e.movementX, -120, 120);
+      this.lookDY += THREE.MathUtils.clamp(e.movementY, -120, 120);
+      this.userT = 3;
+    });
     el.addEventListener('wheel', (e) => {
       if (!this.wantsPointer()) return;
       e.preventDefault();
       this.zoom = THREE.MathUtils.clamp(this.zoom * (1 + e.deltaY * 0.001), 0.45, 2.5);
     }, { passive: false });
+  }
+
+  // Mouse-look must let go when switching to a camera that drives the cursor itself (map view)
+  freeCursorIfNeeded() {
+    if (document.pointerLockElement === this.dom && !this.wantsPointer()) document.exitPointerLock();
   }
 
   // Map view leaves the pointer to MapControls
@@ -175,6 +193,7 @@ export class CameraRig {
     this.kind = kind;
     if (kind === 'fly') this.index.fly = 0;
     this.snapNext = true;
+    this.freeCursorIfNeeded();
     this.onChange?.(this.current);
   }
 
@@ -182,6 +201,7 @@ export class CameraRig {
     const i = this.list.findIndex((p) => p.id === id);
     if (i >= 0) this.index[this.kind] = i;
     this.snapNext = true;
+    this.freeCursorIfNeeded();
     this.onChange?.(this.current);
   }
 
@@ -191,6 +211,7 @@ export class CameraRig {
     this.snapNext = true;
     this.drone.init = false;
     this.lookDX = this.lookDY = 0;
+    this.freeCursorIfNeeded();
     this.onChange?.(this.current);
   }
 
@@ -237,6 +258,7 @@ export class CameraRig {
     this.snapNext = false;
     this.shake = Math.max(0, this.shake - dt * 2.5);
 
+    const locked = document.pointerLockElement === this.dom;
     if (preset.id !== 'pov') this.setNear(1);
     if (preset.type === 'landmark') {
       this.lookDX = this.lookDY = 0;
@@ -259,6 +281,8 @@ export class CameraRig {
     const dxp = this.lookDX, dyp = this.lookDY;
     this.lookDX = this.lookDY = 0;
     const gx = extra.lookX || 0, gy = extra.lookY || 0; // gamepad right stick (rad/s)
+    // With mouse-look on, the walker's camera stays where the mouse points (no drift back behind them)
+    if (walk && locked) this.userT = Math.max(this.userT, 0.25);
     if (walk) {
       this.yaw -= dxp * 0.006 + gx * dt * 2.6;
       this.pitch = THREE.MathUtils.clamp(this.pitch + dyp * 0.005 + gy * dt * 1.8, -0.5, 1.2);

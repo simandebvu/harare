@@ -20,15 +20,18 @@ function body(car) {
     hl:(car.len||4.9)/2,hw:(car.width||1.9)/2,owner:car};
 }
 export function createCollisionWorld(traffic, people, controls) {
-  const vehicles=new Grid(8),pedestrians=new Grid(4),statics=new Grid(8);
+  // statics: thousands of posts, fins and lot walls line the pavements, so small cells keep each query to a few boxes
+  const vehicles=new Grid(8),pedestrians=new Grid(4),statics=new Grid(2);
   function insertVehicle(car) {
     const b=body(car),r=Math.hypot(b.hl,b.hw)+4;
     vehicles.insert(b,b.x-r,b.z-r,b.x+r,b.z+r);
   }
   return {
     addStaticBox(x,z,yaw,hw,hl,height=3) {
-      const b={x,z,yaw,hw,hl,height,sin:Math.sin(yaw),cos:Math.cos(yaw)},r=Math.hypot(hw,hl);
-      statics.insert(b,x-r,z-r,x+r,z+r);
+      const b={x,z,yaw,hw,hl,height,sin:Math.sin(yaw),cos:Math.cos(yaw)};
+      // exact axis-aligned bounds of the rotated box (a long diagonal wall would otherwise fill a huge square)
+      const ex=Math.abs(b.cos)*hw+Math.abs(b.sin)*hl,ez=Math.abs(b.sin)*hw+Math.abs(b.cos)*hl;
+      statics.insert(b,x-ex,z-ez,x+ex,z+ez);
     },
     refresh() {
       vehicles.map.clear();pedestrians.map.clear();
@@ -42,8 +45,9 @@ export function createCollisionWorld(traffic, people, controls) {
         const p=controls.walk;pedestrians.insert(p,p.x-.3,p.z-.3,p.x+.3,p.z+.3);
       }
     },
-    personBlocked(x,z,r,owner,feet=0) {
-      if(anyNear(statics,x,z,r,b=>feet<b.height&&circleBox(x,z,r,b)&&!(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6)))return true;
+    // withStatics=false skips posts, walls and furniture (far-off pedestrians: nobody can see them clip a bin)
+    personBlocked(x,z,r,owner,feet=0,withStatics=true) {
+      if(withStatics&&anyNear(statics,x,z,r,b=>feet<b.height&&circleBox(x,z,r,b)&&!(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6)))return true;
       if(feet<1.8&&anyNear(vehicles,x,z,r,b=>{
         syncBody(b);
         if(b.owner===owner||!circleBox(x,z,r,b))return false;
@@ -60,8 +64,11 @@ export function createCollisionWorld(traffic, people, controls) {
       if(owner!==controls.car&&controls.blocked?.box?.(x,z,yaw,hl,hw))return true;
       const a={x,z,yaw,hl,hw,sin:Math.sin(yaw),cos:Math.cos(yaw)},r=Math.hypot(hl,hw);
       // Already touching a post or wall (spawned against it): any move that backs away from it stays allowed
-      const now=owner&&body(owner);
-      if(anyNear(statics,x,z,r,b=>boxesOverlap(a,b)&&!(now&&boxesOverlap(now,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6)))return true;
+      if(anyNear(statics,x,z,r,b=>{
+        if(!boxesOverlap(a,b))return false;
+        const now=owner&&body(owner);
+        return !(now&&boxesOverlap(now,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6);
+      }))return true;
       if(anyNear(vehicles,x,z,r,b=>{
         syncBody(b);
         if(b.owner===owner||!boxesOverlap(a,b))return false;

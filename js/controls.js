@@ -181,7 +181,6 @@ export class Controls {
       return false;
     }
     this.mode = mode;
-    if (document.pointerLockElement) document.exitPointerLock();
     const t = this.map.target;
     const w = this.walk, c = this.car;
     if (mode === 'walk') {

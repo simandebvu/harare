@@ -16,7 +16,8 @@ Any static server works (ES modules need http, not file://):
 npm run serve   # python3 -m http.server 8765 → http://localhost:8765
 ```
 
-You start on foot on Jason Moyo Avenue, next to your kombi. Keys: `1` fly · `2` walk · `3` drive · `R` context action
+You start on foot on Jason Moyo Avenue, next to your kombi. Click the city for mouse-look (move the mouse to turn
+the camera, `Esc` frees the cursor); scroll to zoom. Keys: `1` fly · `2` walk · `3` drive · `R` context action
 (enter/exit the kombi, take off, land) · `V` cycle cameras · `H` hooter · `Shift` run/boost · `M` street atlas · `L`
 labels · `U` hide UI · `N` sound on/off (starts muted; also the 🔇 button) · `P` quality · `T` advance time. Gamepad and touch work too.
 
