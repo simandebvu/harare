@@ -365,7 +365,7 @@ export class Controls {
       if (preset.id === 'map') this.updateMap(dt);
       else if (preset.id === 'heli') this.updateHeli(dt);
       else this.updateHeli(dt, true), this.rig.update(dt, this.heliTarget(), I);
-      if(preset.id!=='map'){const h=this.heli;this.player.flightAction={phase:h.phase,time:h.phaseTime,landing:!!h.landing};this.player.update(dt,h.x,h.y,h.z,h.yaw,Math.hypot(h.vx,h.vz),false,h.bank,true);}
+      if(preset.id!=='map'){const h=this.heli,hs=Math.hypot(h.vx,h.vz);this.player.flightAction={phase:h.phase,time:h.phaseTime,landing:!!h.landing,climb:hs+Math.abs(h.vy)>2?Math.atan2(h.vy,hs):0};this.player.update(dt,h.x,h.y,h.z,h.yaw,Math.hypot(hs,h.vy),false,h.bank,true);}
     } else if (this.mode === 'walk') {
       this.updateWalk(dt);
       const w = this.walk;
@@ -442,8 +442,13 @@ export class Controls {
     const up = I.up + (I.jump ? 1 : 0) - (this.keys.has('KeyC') ? 1 : 0);
     const ground = groundY(h.x,h.z)+.16;
     const clearance=h.y-ground;
-    const tx = fx * I.fwd * fast, tz = fz * I.fwd * fast;
-    let ty=THREE.MathUtils.clamp(up,-1,1)*(I.run?15:8);
+    // Fly where you look: W follows the view's pitch (look up to climb, down to dive). A small dead zone keeps level
+    // cruising level; the view only tilts ±0.9 rad, so the flight path is steepened to reach ~80° climbs and dives.
+    const look = Math.abs(h.pitch) > 0.15 ? h.pitch - Math.sign(h.pitch) * 0.15 : 0;
+    const climb = THREE.MathUtils.clamp(look * 1.9, -1.4, 1.4);
+    h.climb = climb;
+    const tx = fx * I.fwd * fast * Math.cos(climb), tz = fz * I.fwd * fast * Math.cos(climb);
+    let ty=THREE.MathUtils.clamp(up,-1,1)*(I.run?30:14) + I.fwd * fast * Math.sin(climb);
     if(h.landing) ty=-Math.min(18,Math.max(1.2,clearance*3));
     else if(clearance<2.34 && up>=0)ty=Math.max(ty,(2.34-clearance)*3);
     // Strong enough to clear shop awnings and first-floor ledges before settling into a hover

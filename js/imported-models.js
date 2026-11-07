@@ -1,6 +1,7 @@
 // Local, licensed hero assets. The city keeps its lightweight crowd/traffic meshes.
 import * as THREE from 'three';
 import { gltfLoader } from './gltf-loader.js';
+import { createCostume } from './hero-costume.js';
 
 const loader = gltfLoader;
 const assetURL = (name) => new URL(`../assets/models/${name}`, import.meta.url).href;
@@ -32,6 +33,7 @@ export async function loadPlayerModel(character = 'male') {
       m.transparent = false; m.alphaTest = 0.45; m.depthWrite = true; m.needsUpdate = true;
     }
   });
+  const costume = createCostume(gltf.scene, root, character);
   const mixer = new THREE.AnimationMixer(gltf.scene);
   const required = { idle: 'Idle_Loop', walk: 'Walk_Loop', run: 'Sprint_Loop', jump: 'Jump_Loop', hover: 'Hover_Loop', flight: 'Flight_Loop', brace: 'Brace_Loop', takeoff: 'Takeoff', touchdown: 'Touchdown' };
   const actions = {};
@@ -43,10 +45,11 @@ export async function loadPlayerModel(character = 'male') {
   actions.jump.setLoop(THREE.LoopOnce,1);actions.jump.clampWhenFinished=true;
   actions.takeoff.setEffectiveTimeScale(0);actions.touchdown.setEffectiveTimeScale(0);
   let wasAirborne=false;
-  let moving = 0, running = 0, jumping = 0, gaitPhase=0, flightBlend=0, cruise=0, bank=0, clock=0, brace=0, sequenceWeight=0, lastSequence='takeoff';
+  let climbTilt = 0, moving = 0, running = 0, jumping = 0, gaitPhase=0, flightBlend=0, cruise=0, bank=0, clock=0, brace=0, sequenceWeight=0, lastSequence='takeoff';
   return {
     root,
     get gait() { return gaitPhase; },
+    setOutfit: (name) => costume.set(name),
     update(dt, x, y, z, yaw, speed, airborne, lean, powered=false, flightAction=null) {
       // Smooth clip weights; leaving the ground does not snap back to an idle pose.
       const k = 1 - Math.exp(-12 * dt);
@@ -94,11 +97,14 @@ export async function loadPlayerModel(character = 'male') {
 
       bank+=((powered?-lean:0)-bank)*(1-Math.exp(-dt*5));
       // Upright hover blends into a forward glide, with a gentle breathing motion at rest.
-      gltf.scene.rotation.x=cruise*1.08*(1-brace);
+      // Lie along the flight path: upright for a straight climb, head-down in a dive
+      climbTilt+=((powered?flightAction?.climb||0:0)-climbTilt)*(1-Math.exp(-dt*4));
+      gltf.scene.rotation.x=cruise*(1.08-0.68*climbTilt)*(1-brace);
       gltf.scene.position.y=flightBlend*(.10+Math.sin(clock*2.5)*.025*(1-cruise))*(1-brace);
       root.position.set(x, y, z);
       root.rotation.set(0, yaw, 0);
       gltf.scene.rotation.z = powered ? bank : -lean * 0.35;
+      costume.update(dt);
     },
   };
 }

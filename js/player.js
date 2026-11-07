@@ -45,6 +45,7 @@ export class Player {
     this.scene = scene;
     this.models = new Map();
     this.character = 'male';
+    this.outfit = 'viltrumite';
     this.ready = this.setCharacter('male').catch(error => console.warn('[harare] Character load failed', error));
   }
 
@@ -53,6 +54,7 @@ export class Player {
     let model = this.models.get(character);
     if (!model) {
       model = await loadPlayerModel(character);
+      model.setOutfit(this.outfit);
       model.root.visible = false;
       this.models.set(character, model);
       this.scene.add(model.root);
@@ -68,6 +70,12 @@ export class Player {
     model.root.visible = this._visible;
     this.F.hide(this.i, true);
     this.F.commit(this.t);
+  }
+
+  // 'viltrumite' (white suit, red cape) or 'street' (the character's own clothes), for every loaded character
+  setOutfit(outfit) {
+    this.outfit = outfit;
+    for (const m of this.models.values()) m.setOutfit(outfit);
   }
 
   set visible(v) {

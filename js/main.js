@@ -211,7 +211,7 @@ async function init() {
   // --- HUD -------------------------------------------------------------------------------------------------------------
   const help = document.getElementById('help');
   const HELP = {
-    fly: 'Skyweaver · click to mouse-look · WASD fly · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
+    fly: 'Skyweaver · look up or down and press W to climb or dive · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
     walk: 'Click to mouse-look (Esc frees the cursor) · WASD walk · Shift run · Space jump · V camera',
     drive: 'Click to mouse-look · W/S accelerate & reverse · A/D steer · Space brake · keep left!',
   };
