@@ -59,7 +59,9 @@ export function createCollisionWorld(traffic, people, controls) {
     carBlocked(x,z,yaw,hl,hw,owner,withPeople=true) {
       if(owner!==controls.car&&controls.blocked?.box?.(x,z,yaw,hl,hw))return true;
       const a={x,z,yaw,hl,hw,sin:Math.sin(yaw),cos:Math.cos(yaw)},r=Math.hypot(hl,hw);
-      if(anyNear(statics,x,z,r,b=>boxesOverlap(a,b)))return true;
+      // Already touching a post or wall (spawned against it): any move that backs away from it stays allowed
+      const now=owner&&body(owner);
+      if(anyNear(statics,x,z,r,b=>boxesOverlap(a,b)&&!(now&&boxesOverlap(now,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6)))return true;
       if(anyNear(vehicles,x,z,r,b=>{
         syncBody(b);
         if(b.owner===owner||!boxesOverlap(a,b))return false;

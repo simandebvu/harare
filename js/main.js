@@ -6,6 +6,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { DATA } from './harare-data.js';
 import { buildWorld } from './world.js';
+import { groundY } from './util.js';
 import { buildBuildings } from './buildings.js';
 import { buildTrees } from './trees.js';
 import { createTraffic } from './traffic.js';
@@ -134,6 +135,9 @@ async function init() {
   const detailedCrowd=createCrowdModels(scene,people,camera);
   const contacts=createCollisionWorld(traffic,people,controls);
   controls.contacts=contacts;people.setContacts(contacts);traffic.setContacts(contacts);
+  // Lot boundary walls, gates and yard containers (js/lots.js) block walkers and cars like any other static
+  for (const b of world.lots.solids) contacts.addStaticBox(b.x, b.z, b.yaw, b.hw, b.hl, b.top - groundY(b.x, b.z));
+  for (const p of buildings.posts) contacts.addStaticBox(p.x, p.z, p.yaw, p.hw, p.hl, p.h);
   await step('loading the kombi and player…');
   await Promise.all([controls.pk.ready, controls.player.ready, traffic.renderer.ready, detailedCrowd.ready]);
   controls.map.target.set(0, 0, 0);

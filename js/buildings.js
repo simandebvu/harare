@@ -111,6 +111,7 @@ export function buildBuildings(scene, DATA, renderer) {
   const B = new Buf();
   const grid = new Grid(40);
   const footprints = [];
+  const posts = []; // verandah posts and street-level fins: solid for walkers (main.js hands them to the collision world)
   const labels = [];
   const signs = createSigns(renderer);
   const spots = { dishes: [], huts: [] }; // for js/features/furniture.js
@@ -231,13 +232,15 @@ export function buildBuildings(scene, DATA, renderer) {
     }
   }
   // Vertical fins on the window-cell boundaries (pitch = the style's cell width), full height
-  function fins(edges, y0, y1, depth, color, pitch, f) {
+  // solid: the fins reach the pavement, so walkers must not slip between them into the facade
+  function fins(edges, y0, y1, depth, color, pitch, f, solid = false) {
     for (const e of edges) {
       if (e.len < 4) continue;
       const yaw = yawOf(e);
       for (let j = Math.ceil((e.u0 + 0.3) / pitch); j * pitch < e.u0 + e.len - 0.3; j++) {
         const [x, z] = at(e, (j * pitch - e.u0) / e.len, depth / 2);
         box(x, z, y0, 0.16, depth, y1 - y0, color, yaw, f);
+        if (solid) posts.push({ x, z, yaw: Math.atan2(e.nx, e.nz), hw: 0.08, hl: depth / 2, h: y1 - y0 });
       }
     }
   }
@@ -272,8 +275,9 @@ export function buildBuildings(scene, DATA, renderer) {
     quad(b0, a0, a1, b1, tin.clone().multiplyScalar(0.55), null, NOFAC); // soffit
     const n = Math.max(2, Math.round(e.len / 3.2));
     for (let i = 0; i <= n; i++) {
-      const t = i / n;
-      box(e.ax + (e.bx - e.ax) * t + ox - e.nx * 0.1, e.az + (e.bz - e.az) * t + oz - e.nz * 0.1, y0, 0.14, 0.14, h, post, yaw);
+      const t = i / n, px = e.ax + (e.bx - e.ax) * t + ox - e.nx * 0.1, pz = e.az + (e.bz - e.az) * t + oz - e.nz * 0.1;
+      box(px, pz, y0, 0.14, 0.14, h, post, yaw);
+      posts.push({ x: px, z: pz, yaw, hw: 0.09, hl: 0.09, h });
     }
     // fascia board, with a hand-painted firm name on most
     box(e.mx + ox, e.mz + oz, y0 + h - 0.5, e.len + 0.4, 0.06, 0.62, post, yaw);
@@ -493,7 +497,7 @@ export function buildBuildings(scene, DATA, renderer) {
         const relief = brick ? c2.set('#cfc9bd').multiplyScalar(0.95 + r() * 0.08) : c2.copy(c).multiplyScalar(1.04);
         const rf = mf(brick || mat === MAT.mosaic ? MAT.concrete : mat);
         const yStart = tower ? podTop : base;
-        if (style === 5) fins(edges, yStart, top, lm?.finDepth || 0.7, relief, CELL[5][0], rf);
+        if (style === 5) fins(edges, yStart, top, lm?.finDepth || 0.7, relief, CELL[5][0], rf, !tower);
         if (style === 1 || lm?.bands || (style === 5 && r() < 0.3)) bands(edges, base, yStart, top, floorH, lm?.bandDepth || 0.75, relief, rf);
       }
       // Air-conditioners on older office blocks and colonial upper floors
@@ -671,6 +675,7 @@ export function buildBuildings(scene, DATA, renderer) {
   return {
     mesh,
     blocked,
+    posts,
     rooftops: footprints,
     addRoofDeck(x,z,r,y){
       const p=[x-r,z-r,x+r,z-r,x+r,z+r,x-r,z+r],bounds=[x-r,z-r,x+r,z+r];

@@ -395,6 +395,19 @@ export default {
     // The dense layer: corners, kerbside clutter, kiosks, ATMs, scaffolding, overhead lines (street-clutter.js)
     const clutter = buildClutter(ctx, { parts, T, instanced, okPave, take, free, kerbGap, junctions, blocked, r });
 
+    // Solid street furniture for js/collision-world.js, matching the instanced parts above (local +z = instance yaw).
+    // Shelters only block at their back and side panels so you can still step in under the roof.
+    const solid = (it, lx, lz, hw, hl, h) => {
+      const yaw = it.yaw || 0, c = Math.cos(yaw), s = Math.sin(yaw);
+      ctx.contacts?.addStaticBox(it.x + lx * c + lz * s, it.z - lx * s + lz * c, yaw, hw, hl, h);
+    };
+    for (const b of booths) solid(b, 0, 0, 0.5, 0.5, 2.4);
+    for (const h of huts) solid(h, 0, 0, 0.78, 0.78, 2.4);
+    for (const b of bins) solid(b, 0, 0, 0.22, 0.22, 1.0);
+    for (const t of tables) solid(t, 0, 0, 0.45, 0.28, 0.8);
+    for (const b of bollards) solid(b, 0, 0, 0.12, 0.12, 0.9);
+    for (const p of planters) solid(p, 0, 0, 0.7, 0.7, 0.55);
+    for (const sh of shelters) solid(sh, 0, -0.6, 1.98, 0.05, 2.55), solid(sh, -1.95, -0.1, 0.05, 0.55, 2.55);
     console.log(`[harare] furniture: ${posts.length} street-name posts, ${bins.length} bins, ${shelters.length} shelters, ${booths.length} booths, ${umbrellas.length} airtime umbrellas, ${bollards.length} bollards, ${planters.length} planters, ${huts.length} guard huts, ${dishes.length} dishes; ${clutter}`);
   },
   update() {},

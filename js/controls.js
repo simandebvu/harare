@@ -256,7 +256,7 @@ export class Controls {
 
   // Spawn/teleport clear of walls with room for the actor's whole body.
   nudgeFree(o) {
-    const hit=(x,z)=>o===this.car?this.carHits(x,z,o.yaw):this.walkHits(x,z,.3,0,o);
+    const hit=(x,z)=>o===this.car?this.carHits(x,z,o.yaw)||!!this.contacts?.carBlocked(x,z,o.yaw,o.len/2,o.width/2,o,false):this.walkHits(x,z,.3,0,o);
     if(!hit(o.x,o.z))return;
     const ox=o.x,oz=o.z;
     for(let r=.5;r<100;r+=.5)for(let k=0;k<16;k++) {

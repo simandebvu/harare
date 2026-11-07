@@ -71,3 +71,17 @@ test('street kiosk blocks swept cars and pedestrians at its rotated footprint',(
  world.refresh();assert(world.carBlocked(20,0,0,2.15,.95,car));
  assert(!world.personBlocked(20,0,.3,null,3));
 });
+
+test('a pedestrian walking head-on into a bin steps around it instead of stopping',()=>{
+ const bin=[-.25,1.75,.25,1.75,.25,2.25,-.25,2.25],p={x:0,z:0};
+ const blocked=(x,z)=>circlePolygon(x,z,.32,bin);
+ for(let i=0;i<40&&p.z<4;i++)movePedestrian(p,p.x+(0-p.x)*.2,p.z+.3,blocked);
+ assert(p.z>3,'got past the bin');assert(!blocked(p.x,p.z));
+});
+
+test('a car that starts overlapping a static post can still drive away from it',()=>{
+ const {world,car}=fixture();world.addStaticBox(car.x+.8,car.z,0,.09,.09,3.7);
+ assert(world.carBlocked(car.x,car.z,car.h??car.yaw,2.15,.95,car,false),'overlaps the post now');
+ const away=car.x-.6;assert(!world.carBlocked(away,car.z,car.h??car.yaw,2.15,.95,car,false),'backing away is allowed');
+ assert(world.carBlocked(car.x+.3,car.z,car.h??car.yaw,2.15,.95,car,false),'pushing further in is not');
+});

@@ -169,6 +169,12 @@ export function buildLots(group, DATA, renderer) {
 
   const lots = DATA.lots || [];
   const tar = new Soup(16), conc = new Soup(8), slab = new Soup(4.8), paint = new Soup(), walls = new Soup();
+  // Every wall, post, gate and container goes through walls.box: keep each as a solid for js/collision-world.js
+  const solids = [], drawBox = walls.box.bind(walls);
+  walls.box = (x, z, ux, uz, a, b, y0, y1, cb, ct) => {
+    solids.push({ x, z, yaw: Math.atan2(ux, uz), hl: a, hw: b, top: y1 });
+    drawBox(x, z, ux, uz, a, b, y0, y1, cb, ct);
+  };
   const cars = new Map(); // type -> [matrix, colour]
   const counts = { parking: 0, forecourt: 0, yard: 0, cars: 0, wallM: 0 };
   const white = new THREE.Color('#e8e6dc'), yellow = new THREE.Color('#d8b23a');
@@ -318,5 +324,6 @@ export function buildLots(group, DATA, renderer) {
     im.castShadow = im.receiveShadow = true;
     group.add(im);
   }
+  counts.solids = solids;
   return counts;
 }
