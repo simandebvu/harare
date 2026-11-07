@@ -71,7 +71,7 @@ function landmarkShots(blocked) {
   return out;
 }
 
-const _dir = new THREE.Vector3(), _p = new THREE.Vector3(), _l = new THREE.Vector3(), _q = new THREE.Vector3();
+const _dir = new THREE.Vector3(), _p = new THREE.Vector3(), _l = new THREE.Vector3(), _q = new THREE.Vector3(), _up = new THREE.Vector3();
 
 export class CameraRig {
   constructor(camera, dom, blocked) {
@@ -243,7 +243,8 @@ export class CameraRig {
     const steps = Math.min(100,Math.max(8,Math.ceil(Math.hypot(cx-px,cy-py,cz-pz)/.5)));
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
-      if (this.blocked(px + (cx - px) * t, pz + (cz - pz) * t, py + (cy - py) * t)) return Math.max(0.15, (i - 1.3) / steps);
+      // the last clear sample, a little short of the wall (no floor: a long zoomed-out boom must not end inside it)
+      if (this.blocked(px + (cx - px) * t, pz + (cz - pz) * t, py + (cy - py) * t)) return Math.max(0.02, (i - 1.3) / steps);
     }
     return 1;
   }
@@ -356,7 +357,23 @@ export class CameraRig {
     look.set(t.x, t.y + lookH, t.z);
     const hy = walk ? height + spch * dist : height + spch * dist * 0.8;
     const want = _q.set(look.x + ox * dist * cp, t.y + Math.max(0.3, hy), look.z + oz * dist * cp);
-    const dWant = this.clearance(look.x, look.y, look.z, want.x, want.y, want.z);
+    let dWant = this.clearance(look.x, look.y, look.z, want.x, want.y, want.z);
+    // Backed against a wall the camera would be squeezed into the hero's back: rise instead and look down over their
+    // head (or the kombi's roof), whichever leaves the camera further from them
+    const bodyR = walk ? 0.45 : 2.6;
+    let aheadX = 0, aheadZ = 0;
+    const reach = dWant * Math.hypot(want.x - look.x, want.y - look.y, want.z - look.z);
+    if (reach < bodyR + 1.2) {
+      // further back first; with the wall right behind, straight up over the head
+      let best = reach + 0.2, risen = false;
+      for (const [back, up] of walk ? [[1.2, 1.5], [0.6, 1.6], [0.15, 1.7]] : [[3.2, 2.6], [1.6, 3.0], [0.4, 3.4]]) {
+        _up.set(look.x + ox * back, look.y + up, look.z + oz * back);
+        const dUp = this.clearance(look.x, look.y, look.z, _up.x, _up.y, _up.z), r = dUp * Math.hypot(back, up);
+        if (r > best) (best = r), want.copy(_up), (dWant = dUp), (risen = true);
+      }
+      // looking down from up there, aim a little ahead so the street in front stays in view
+      if (risen) aheadX = -ox * (walk ? 2.2 : 4), aheadZ = -oz * (walk ? 2.2 : 4);
+    }
     this.dist = snap ? dWant : this.dist + (dWant - this.dist) * (dWant < this.dist ? 1 : 1 - Math.exp(-dt * 2.5));
     pos.set(look.x + (want.x - look.x) * this.dist, look.y + (want.y - look.y) * this.dist, look.z + (want.z - look.z) * this.dist);
     pos.y = Math.max(pos.y, groundY(pos.x, pos.z) + 0.3);
@@ -368,8 +385,11 @@ export class CameraRig {
     if(safe<1)this.followPosition.lerpVectors(look,this.followPosition,safe);
     this.followPosition.y=Math.max(this.followPosition.y,groundY(this.followPosition.x,this.followPosition.z)+.3);
     cam.position.copy(this.followPosition);
+    // Near plane: 1 m keeps depth precision across the city, but anything closer is sliced open. Shrink it only while
+    // the camera is that close to the hero or the kombi.
+    this.setNear(THREE.MathUtils.clamp((cam.position.distanceTo(look) - bodyR) * 0.6, 0.06, 1));
     this.applyShake(cam);
-    _l.set(look.x + Math.sin(t.yaw) * sp * 0.15, look.y, look.z + Math.cos(t.yaw) * sp * 0.15);
+    _l.set(look.x + aheadX + Math.sin(t.yaw) * sp * 0.15, look.y, look.z + aheadZ + Math.cos(t.yaw) * sp * 0.15);
     if(snap)this.followLook.copy(_l);else this.followLook.lerp(_l,1-Math.exp(-dt*10));
     cam.lookAt(this.followLook);
   }

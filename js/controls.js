@@ -376,6 +376,14 @@ export class Controls {
       this.rig.update(dt, this.followTarget('drive', c.x, groundY(c.x, c.z) + 0.22 + (c.alt||0), c.z, c.yaw, Math.abs(c.v)), I);
     }
     this.updateKombiLamps(dt);
+    // Last resort: if the camera still ends up inside the hero (tight alley, low canopy), hide them for that moment
+    // rather than draw them sliced open
+    const hero=this.player.imported;
+    if(hero&&(this.mode==='walk'||this.mode==='fly')&&preset.id!=='map'){
+      const s=this.mode==='fly'?this.heli:this.walk,cp=this.camera.position;
+      const dy=Math.max(s.y+.2,Math.min(s.y+1.75,cp.y))-cp.y;
+      hero.root.visible=this.player.visible&&Math.hypot(cp.x-s.x,dy,cp.z-s.z)>.42;
+    }
   }
 
   followTarget(kind, x, y, z, yaw, speed) {
@@ -489,8 +497,25 @@ export class Controls {
     const speed=Math.hypot(h.vx,h.vz),distance=6+Math.min(2,speed*.035);
     // A damped chase camera eases through turns; pitch drag now changes the view.
     _v.set(h.x-fx*distance,h.y+2.2-Math.sin(h.pitch)*distance*.65,h.z-fz*distance);
+    // Keep the chase camera out of buildings and above the ground, the same way the walk/drive rig does
+    const hx=h.x,hy=h.y+1,hz=h.z,camFloor=(x,z)=>groundY(x,z)+.4;
+    let f=this.rig.clearance(hx,hy,hz,_v.x,_v.y,_v.z);
+    if(f<1)_v.set(hx+(_v.x-hx)*f,hy+(_v.y-hy)*f,hz+(_v.z-hz)*f);
+    // hugging a wall: rise over the hero rather than sit in their back
+    if(Math.hypot(_v.x-hx,_v.y-hy,_v.z-hz)<2){
+      let best=Math.hypot(_v.x-hx,_v.y-hy,_v.z-hz)+.2;
+      for(const [b,u] of [[2,2.5],[.8,3],[.2,3.2]]){
+        const x=hx-fx*b,y=hy+u,z=hz-fz*b,g=this.rig.clearance(hx,hy,hz,x,y,z),r=g*Math.hypot(b,u);
+        if(r>best){best=r;_v.set(hx+(x-hx)*g,hy+(y-hy)*g,hz+(z-hz)*g);}
+      }
+    }
+    _v.y=Math.max(_v.y,camFloor(_v.x,_v.z));
     c.position.x+=h.vx*dt;c.position.y+=h.vy*dt;c.position.z+=h.vz*dt;
     c.position.lerp(_v,1-Math.exp(-dt*7));
+    f=this.rig.clearance(hx,hy,hz,c.position.x,c.position.y,c.position.z);
+    if(f<1)c.position.set(hx+(c.position.x-hx)*f,hy+(c.position.y-hy)*f,hz+(c.position.z-hz)*f);
+    c.position.y=Math.max(c.position.y,camFloor(c.position.x,c.position.z));
+    this.rig.setNear(THREE.MathUtils.clamp((Math.hypot(c.position.x-hx,c.position.y-hy,c.position.z-hz)-.6)*.6,.06,1));
     if(h.phase==='impact')c.position.y+=Math.sin(h.phaseTime*55)*.065*Math.exp(-h.phaseTime*7);
     c.lookAt(h.x+fx*2,h.y+1+Math.sin(h.pitch)*2,h.z+fz*2);
     this.rig.setFov(60 + Math.min(12, Math.hypot(h.vx, h.vz) * 0.12), dt);
