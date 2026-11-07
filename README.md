@@ -24,7 +24,7 @@ labels · `U` hide UI · `N` sound on/off (starts muted; also the 🔇 button) �
 Two missions sit top-left: a **taxi shift** (pick up and drop off passengers for fares, in the HiAce or the Vela X1
 roadster from *Choose your ride*) and a **supply drop** (fly a package to a rooftop target). **Character & options**
 switches the hero between male and female, and between a Viltrumite-style flight suit (white suit, red gloves and
-boots, a simulated red cape) and street clothes. In flight, look up or down and press `W` to climb or dive.
+boots, belt, a Great Zimbabwe chevron emblem and a simulated red cape) and street clothes. In flight, look up or down and press `W` to climb or dive.
 
 ## Layout
 

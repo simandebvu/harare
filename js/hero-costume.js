@@ -1,33 +1,98 @@
 // js/hero-costume.js — the hero's outfits. 'viltrumite' is an original white-and-red flight suit in the spirit of the
-// Viltrumites (no emblem copied): white suit, red gloves and boots, and a simulated red cape. 'street' restores the
+// Viltrumites (nothing copied): white suit with a red collar, a dark-red belt with a gold buckle, a chevron chest
+// emblem, red gloves and boots, gold clasps and a simulated red cape. 'street' restores the
 // character's own clothes. The cape is a small verlet cloth in world space, pinned between the shoulders, with drag
 // against still air (so it streams behind in flight) and a torso capsule it cannot pass through.
 import * as THREE from 'three';
 
 const WHITE = new THREE.Color('#f1f0ea'), RED = new THREE.Color('#b8141c');
-// Per character: which materials change, to what, and how much of the original texture's light/dark survives
+const GOLD = new THREE.Color('#d6a536'), BELT = new THREE.Color('#4b0c10');
+
+// The chest emblem (original): a red disc in a gold ring, crossed by stacked gold chevrons after the chevron frieze on
+// the walls of Great Zimbabwe. Body space: metres, y up, +z = the front, at the rest pose.
+function emblem(x, y, z, cy, r) {
+  if (z < 0.04) return null;
+  const u = x / r, v = (y - cy) / r, d = Math.hypot(u, v);
+  if (d > 1) return null;
+  if (d > 0.84) return GOLD;
+  const c = (v + Math.abs(u) * 0.85) * 2.4;
+  return Math.abs(u) < 0.62 && v > -0.72 && v < 0.5 && c - Math.floor(c) < 0.42 ? GOLD : RED;
+}
+const belt = (lo, hi) => (x, y, z) => (y > lo && y < hi ? (z > 0.08 && Math.abs(x) < 0.035 ? GOLD : BELT) : null);
+
+// Per character and material: base colour, how much of the texture's light/dark survives, blur (px) to soften small
+// print such as shirt buttons, and painted details by body position
 const SUIT = {
-  male: { Wolf3D_Outfit_Top: [WHITE, 1.6], Wolf3D_Outfit_Bottom: [WHITE, 1.6], Wolf3D_Outfit_Footwear: [RED, 1.2], Wolf3D_Body: [RED, 0] },
-  female: { Topmat: [WHITE, 0.25] },
+  male: {
+    Wolf3D_Outfit_Top: { color: WHITE, contrast: 1.5, blur: 4, paint: (x, y, z) => (y > 1.56 && Math.abs(x) < 0.15 ? RED : emblem(x, y, z, 1.38, 0.075)) },
+    Wolf3D_Outfit_Bottom: { color: WHITE, contrast: 1.5, blur: 4, paint: belt(1.035, 2) },
+    Wolf3D_Outfit_Footwear: { color: RED, contrast: 1.2 },
+    Wolf3D_Body: { color: RED, contrast: 0 },
+  },
+  female: {
+    Topmat: { color: WHITE, contrast: 0.25, blur: 3, paint: (x, y, z) => belt(1.0, 1.06)(x, y, z) || emblem(x, y, z, 1.3, 0.065) },
+  },
 };
 
-// Keep the texture's folds and seams but move it to a new colour: luminance around its mean, scaled by `contrast`
-function recolour(tex, color, contrast) {
+// Rasterise each triangle of `meshes` in texture space and ask paint(x, y, z) for its colour at that body point
+function paintMap(meshes, W, H, paint) {
+  const out = new Float32Array(W * H * 3).fill(-1);
+  const v = new THREE.Vector3();
+  for (const mesh of meshes) {
+    const P = mesh.geometry.attributes.position, UV = mesh.geometry.attributes.uv, I = mesh.geometry.index;
+    if (!UV) continue;
+    const rest = new Float32Array(P.count * 3);
+    for (let i = 0; i < P.count; i++) {
+      v.fromBufferAttribute(P, i);
+      if (mesh.isSkinnedMesh) mesh.applyBoneTransform(i, v);
+      v.applyMatrix4(mesh.matrixWorld);
+      rest[i * 3] = v.x; rest[i * 3 + 1] = v.y; rest[i * 3 + 2] = v.z;
+    }
+    const n = I ? I.count : P.count;
+    for (let t = 0; t < n; t += 3) {
+      const ia = I ? I.getX(t) : t, ib = I ? I.getX(t + 1) : t + 1, ic = I ? I.getX(t + 2) : t + 2;
+      const ax = UV.getX(ia) * W, ay = UV.getY(ia) * H, bx = UV.getX(ib) * W, by = UV.getY(ib) * H, cx = UV.getX(ic) * W, cy = UV.getY(ic) * H;
+      const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (Math.abs(den) < 1e-9) continue;
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx)) - 1), x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx, cx)) + 1);
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy)) - 1), y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by, cy)) + 1);
+      for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+        const sx = px + 0.5, sy = py + 0.5;
+        const wa = ((by - cy) * (sx - cx) + (cx - bx) * (sy - cy)) / den, wb = ((cy - ay) * (sx - cx) + (ax - cx) * (sy - cy)) / den, wc = 1 - wa - wb;
+        if (wa < -0.06 || wb < -0.06 || wc < -0.06) continue; // a little past each edge, so UV seams don't show a hairline
+        const c = paint(rest[ia * 3] * wa + rest[ib * 3] * wb + rest[ic * 3] * wc, rest[ia * 3 + 1] * wa + rest[ib * 3 + 1] * wb + rest[ic * 3 + 1] * wc, rest[ia * 3 + 2] * wa + rest[ib * 3 + 2] * wb + rest[ic * 3 + 2] * wc);
+        if (c) { const o = (py * W + px) * 3; out[o] = c.r; out[o + 1] = c.g; out[o + 2] = c.b; }
+      }
+    }
+  }
+  return out;
+}
+
+// Keep the texture's folds and seams but move it to new colours: luminance around its mean (optionally blurred),
+// scaled by `contrast`, times the base colour or whatever paintMap put there
+function recolour(tex, { color, contrast, blur = 0, paint }, meshes) {
   const img = tex?.image;
   if (!img || !img.width) return null;
-  const cv = document.createElement('canvas');
-  cv.width = img.width; cv.height = img.height;
+  const W = img.width, H = img.height, cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
   const g = cv.getContext('2d', { willReadFrequently: true });
   g.drawImage(img, 0, 0);
-  const d = g.getImageData(0, 0, cv.width, cv.height), px = d.data;
-  let mean = 0;
-  for (let i = 0; i < px.length; i += 4) mean += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-  mean /= px.length / 4;
-  const c = color.clone().convertLinearToSRGB();
-  for (let i = 0; i < px.length; i += 4) {
-    const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-    const k = Math.min(1.06, Math.max(0.5, 0.86 + ((l - mean) / 255) * contrast));
-    px[i] = c.r * 255 * k; px[i + 1] = c.g * 255 * k; px[i + 2] = c.b * 255 * k;
+  const d = g.getImageData(0, 0, W, H), px = d.data;
+  let L = new Float32Array(W * H), mean = 0;
+  for (let i = 0; i < W * H; i++) mean += L[i] = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+  mean /= W * H;
+  if (blur > 0) {
+    const tmp = new Float32Array(W * H), r = blur, k = 1 / (2 * r + 1);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let s = 0; for (let j = -r; j <= r; j++) s += L[y * W + Math.min(W - 1, Math.max(0, x + j))]; tmp[y * W + x] = s * k; }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let s = 0; for (let j = -r; j <= r; j++) s += tmp[Math.min(H - 1, Math.max(0, y + j)) * W + x]; L[y * W + x] = s * k; }
+  }
+  const painted = paint ? paintMap(meshes, W, H, paint) : null;
+  const base = color.clone().convertLinearToSRGB(), c = new THREE.Color();
+  for (let i = 0; i < W * H; i++) {
+    const k = Math.min(1.06, Math.max(0.5, 0.86 + ((L[i] - mean) / 255) * contrast));
+    if (painted && painted[i * 3] >= 0) c.setRGB(painted[i * 3], painted[i * 3 + 1], painted[i * 3 + 2]).convertLinearToSRGB();
+    else c.copy(base);
+    px[i * 4] = c.r * 255 * k; px[i * 4 + 1] = c.g * 255 * k; px[i * 4 + 2] = c.b * 255 * k;
   }
   g.putImageData(d, 0, 0);
   const t = new THREE.CanvasTexture(cv);
@@ -62,6 +127,14 @@ function createCape(model, root, { len = 1.05, legR = 0.2 } = {}) {
   // vertices are written in world space: keep the mesh's own matrix at identity whatever its parent does
   mesh.matrixAutoUpdate = false; mesh.matrixWorldAutoUpdate = false;
   root.add(mesh);
+  // gold clasps where the cape meets the shoulders, at the front of the collarbones
+  const claspGeo = new THREE.SphereGeometry(0.024, 14, 10), claspMat = new THREE.MeshStandardMaterial({ color: GOLD, metalness: 0.85, roughness: 0.3 });
+  const clasps = [0, 1].map(() => {
+    const c = new THREE.Mesh(claspGeo, claspMat);
+    c.castShadow = true; c.matrixAutoUpdate = false; c.matrixWorldAutoUpdate = false;
+    root.add(c);
+    return c;
+  });
 
   const V = (o, v) => o.getWorldPosition(v);
   const neck = new THREE.Vector3(), aL = new THREE.Vector3(), aR = new THREE.Vector3(), hips = new THREE.Vector3();
@@ -119,6 +192,7 @@ function createCape(model, root, { len = 1.05, legR = 0.2 } = {}) {
 
   return {
     mesh,
+    set visible(v) { mesh.visible = clasps[0].visible = clasps[1].visible = v; },
     reset() { ready = false; },
     update(dt) {
       if (!mesh.visible || !root.visible) { ready = false; return; }
@@ -160,6 +234,11 @@ function createCape(model, root, { len = 1.05, legR = 0.2 } = {}) {
       if (!Number.isFinite(pos[pos.length - 1])) return reset();
       attr.array.set(pos);
       attr.needsUpdate = true;
+      // on each collarbone: halfway from the neck to the shoulder joint, a little down and out in front
+      for (const [c, a] of [[clasps[0], aL], [clasps[1], aR]]) {
+        tmp.lerpVectors(neck, a, 0.55).addScaledVector(up, -0.035).addScaledVector(back, -0.09);
+        c.matrixWorld.makeTranslation(tmp.x, tmp.y, tmp.z);
+      }
       geo.computeVertexNormals();
     },
   };
@@ -168,16 +247,21 @@ function createCape(model, root, { len = 1.05, legR = 0.2 } = {}) {
 // Wire the outfits onto a loaded hero. Returns { set(outfit), update(dt) }.
 export function createCostume(model, root, character) {
   const spec = SUIT[character] || {};
-  const mats = [];
+  const mats = [], meshesOf = new Map();
+  model.updateMatrixWorld(true); // rest pose: paintMap reads body positions from it
   model.traverse((o) => {
     if (!o.isMesh) return;
-    for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (spec[m.name] && !mats.includes(m)) mats.push(m);
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!spec[m.name]) continue;
+      if (!mats.includes(m)) mats.push(m);
+      (meshesOf.get(m) || meshesOf.set(m, []).get(m)).push(o);
+    }
   });
   const street = new Map(mats.map((m) => [m, { map: m.map, color: m.color.clone() }]));
   const suit = new Map(mats.map((m) => {
-    const [color, contrast] = spec[m.name];
-    const map = contrast > 0 ? recolour(m.map, color, contrast) : null;
-    return [m, { map, color: map ? new THREE.Color(1, 1, 1) : color.clone() }];
+    const look = spec[m.name];
+    const map = look.contrast > 0 ? recolour(m.map, look, meshesOf.get(m)) : null;
+    return [m, { map, color: map ? new THREE.Color(1, 1, 1) : look.color.clone() }];
   }));
   const cape = createCape(model, root, character === 'female' ? { len: 0.98, legR: 0.34 } : { len: 1.05, legR: 0.2 });
   let outfit = 'street';
@@ -187,7 +271,7 @@ export function createCostume(model, root, character) {
       outfit = name === 'viltrumite' ? 'viltrumite' : 'street';
       const look = outfit === 'viltrumite' ? suit : street;
       for (const m of mats) { const s = look.get(m); m.map = s.map; m.color.copy(s.color); m.needsUpdate = true; }
-      if (cape) { cape.mesh.visible = outfit === 'viltrumite'; cape.reset(); }
+      if (cape) { cape.visible = outfit === 'viltrumite'; cape.reset(); }
     },
     update(dt) { cape?.update(dt); },
   };
