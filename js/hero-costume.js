@@ -195,7 +195,8 @@ function createCape(model, root, { len = 1.05, legR = 0.2 } = {}) {
     set visible(v) { mesh.visible = clasps[0].visible = clasps[1].visible = v; },
     reset() { ready = false; },
     update(dt) {
-      if (!mesh.visible || !root.visible) { ready = false; return; }
+      // Keep simulating while the camera briefly hides the hero, so the cape doesn't snap back to hanging straight
+      if (!mesh.visible) { ready = false; return; }
       root.updateMatrixWorld(true);
       if (!ready) reset();
       topPrev.set(top);

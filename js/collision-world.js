@@ -77,9 +77,14 @@ export function createCollisionWorld(traffic, people, controls) {
       }))return true;
       return withPeople&&anyNear(pedestrians,x,z,r+.3,p=>p!==owner&&circleBox(p.x,p.z,.28,a));
     },
+    // a pedestrian inside this car pose (cars easing out of a wedge still never drive through people)
+    hitsPerson(x,z,yaw,hl,hw,owner) {
+      const a={x,z,yaw,hl,hw,sin:Math.sin(yaw),cos:Math.cos(yaw)};
+      return anyNear(pedestrians,x,z,Math.hypot(hl,hw)+.3,p=>p!==owner&&circleBox(p.x,p.z,.28,a));
+    },
     trafficGap(car,look) {
       const b=body(car),a={...b,x:b.x+b.sin*look/2,z:b.z+b.cos*look/2,hl:b.hl+look/2};
-      let gap=Infinity;
+      let gap=Infinity;car.heldByParked=false;
       const r=Math.hypot(a.hl,a.hw);
       anyNear(vehicles,a.x,a.z,r,o=>{
         syncBody(o);
@@ -87,7 +92,9 @@ export function createCollisionWorld(traffic, people, controls) {
         const along=(o.x-b.x)*b.sin+(o.z-b.z)*b.cos;
         if(along<=0)return false;
         const extent=Math.abs(b.sin*o.sin+b.cos*o.cos)*o.hl+Math.abs(b.sin*o.cos-b.cos*o.sin)*o.hw;
-        gap=Math.min(gap,Math.max(0,along-b.hl-extent));return false;
+        const g=Math.max(0,along-b.hl-extent);
+        if(g<gap){gap=g;car.heldByParked=o.owner===controls.car&&controls.mode!=='drive';}
+        return false;
       });
       anyNear(pedestrians,a.x,a.z,r+.3,p=>{
         if(circleBox(p.x,p.z,.3,a)) {

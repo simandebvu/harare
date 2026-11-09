@@ -77,6 +77,7 @@ async function init() {
   envSky.scale.setScalar(1000);
   envScene.add(envSky);
   let envRT = null;
+  const envSun = new THREE.Vector3();
 
   // --- city ------------------------------------------------------------------------------------------------------------
   await step('laying out streets…');
@@ -162,7 +163,7 @@ async function init() {
   const warm = new THREE.Color('#ffc18a'), noon = new THREE.Color('#fff6e8');
   const fogDay = new THREE.Color('#b8c4d0'), fogDusk = new THREE.Color('#d39a6a'), fogNight = new THREE.Color('#1a2030');
 
-  function applyTime() {
+  function applyTime(force = false) {
     const H = ((hour - 12.2) * 15 * Math.PI) / 180;
     const lat = (LAT * Math.PI) / 180, dec = (DECLINATION * Math.PI) / 180;
     const east = -Math.cos(dec) * Math.sin(H);
@@ -197,15 +198,24 @@ async function init() {
     const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
     clock.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 
-    if (envRT) envRT.dispose();
-    envRT = pmrem.fromScene(envScene);
-    scene.environment = nightness > 0.9 ? null : envRT.texture;
-    scene.environmentIntensity = 0.3 * day + 0.03;
+    // Re-bake the sky reflection only when the sun has visibly moved (the slider fires dozens of inputs a second), and
+    // never swap scene.environment to null: that changes every material's shader and recompiles the whole city
+    if (!envRT || force || envSun.angleTo(sunDir) > 0.035) {
+      if (envRT) envRT.dispose();
+      envRT = pmrem.fromScene(envScene);
+      envSun.copy(sunDir);
+    }
+    scene.environment = envRT.texture;
+    scene.environmentIntensity = nightness > 0.9 ? 0 : 0.3 * day + 0.03;
+    // No sun, no shadows worth redrawing every frame
+    renderer.shadowMap.autoUpdate = sun.intensity > 0.01;
+    if (!renderer.shadowMap.autoUpdate) renderer.shadowMap.needsUpdate = true;
   }
   timeInput.addEventListener('input', () => {
     hour = parseFloat(timeInput.value);
     applyTime();
   });
+  timeInput.addEventListener('change', () => applyTime(true));
   applyTime();
 
   // --- HUD -------------------------------------------------------------------------------------------------------------
@@ -264,7 +274,7 @@ async function init() {
     setHour(h) {
       hour = ((h % 24) + 24) % 24;
       timeInput.value = hour;
-      applyTime();
+      applyTime(true);
     },
     getNightness: () => nightness,
     getSunDir: () => sunDir,
@@ -306,14 +316,16 @@ async function init() {
   // --- loop -------------------------------------------------------------------------------------------------------------
   const timer = new THREE.Clock();
   const frameTimes = [];
+  let frameSum = 0;
   let userQuality = false;
   addEventListener('keydown', (e) => e.code === 'KeyP' && (userQuality = true));
   const shadowFocus = new THREE.Vector3(), shadowRight = new THREE.Vector3(), shadowUp = new THREE.Vector3();
   const worldUp = new THREE.Vector3(0, 1, 0);
   function frame() {
-    const dt = timer.getDelta();
-    contacts.refresh();
+    // A hidden tab stops the loop; the first frame back must not replay the whole absence in one step
+    const raw = timer.getDelta(), dt = Math.min(raw, 0.1);
     controls.update(dt, nightness);
+    camera.updateMatrixWorld(); // cull people and cars against this frame's view, not last frame's
     traffic.update(dt, nightness);
     contacts.refresh();
     people.update(dt);
@@ -324,11 +336,11 @@ async function init() {
     trees.update(dt, camera);
 
     // Drop ambient occlusion automatically if the machine can't keep up
-    if (timer.elapsedTime > 6) frameTimes.push(dt); // ignore the post-load warm-up
+    if (timer.elapsedTime > 6 && raw < 0.25) frameTimes.push(raw), (frameSum += raw); // ignore warm-up and tab switches
     if (frameTimes.length > 90) {
-      frameTimes.shift();
-      const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
-      if (avg > 1 / 38 && post.quality > 1 && !userQuality) post.setQuality(1), showQuality(), (frameTimes.length = 0);
+      frameSum -= frameTimes.shift();
+      const avg = frameSum / frameTimes.length;
+      if (avg > 1 / 38 && post.quality > 1 && !userQuality) post.setQuality(1), showQuality(), (frameTimes.length = 0), (frameSum = 0);
     }
 
     // Shadow frustum follows what you're looking at

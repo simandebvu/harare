@@ -321,7 +321,11 @@ export function createTraffic(scene, DATA, count = 650) {
       }
       if(car.init&&contacts) {
         const look=Math.min(14,2+car.v*car.v/16);
-        gap=Math.min(gap,contacts.trafficGap(car,look)+1.8);
+        const g=contacts.trafficGap(car,look)+1.8;
+        // the player's abandoned kombi blocking the lane: wait a moment, then edge round it (it's ignored for 2 s)
+        car.parkedT=car.heldByParked&&car.v<.5?(car.parkedT||0)+dt:0;
+        if(car.parkedT>4){car.parkedT=0;car.ghostT=2;}
+        if(!(car.ghostT>0))gap=Math.min(gap,g);
       }
       const target = Math.min(E.vmax * car.drive, Math.max(0, (gap - 2.5) * 0.9));
       const dv = Math.max(-9 * dt, Math.min(2.8 * dt, target - car.v));
@@ -364,9 +368,16 @@ export function createTraffic(scene, DATA, count = 650) {
       let dh = th - car.h;
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
       const nh=car.h+dh*Math.min(1,dt*5);
-      const result=sweepPose({x:car.x,z:car.z,yaw:car.h},{x:nx,z:nz,yaw:nh},p=>contacts?.carBlocked(p.x,p.z,p.yaw,car.len/2,VEHICLE_TYPES[car.type].width/2,car));
-      car.x=result.x;car.z=result.z;car.h=result.yaw;
-      if(result.hit){Object.assign(car,oldPath);car.v=0;car.brake=1;}
+      // A car wedged for seconds (a parked kombi, a stray post at a tight corner) eases through instead of freezing its
+      // whole queue behind it forever
+      const hw=VEHICLE_TYPES[car.type].width/2;
+      if(car.ghostT>0){car.ghostT-=dt;if(contacts?.hitsPerson(nx,nz,nh,car.len/2,hw,car)){Object.assign(car,oldPath);car.v=0;}else{car.x=nx;car.z=nz;car.h=nh;}}
+      else{
+        const result=sweepPose({x:car.x,z:car.z,yaw:car.h},{x:nx,z:nz,yaw:nh},p=>contacts?.carBlocked(p.x,p.z,p.yaw,car.len/2,hw,car));
+        car.x=result.x;car.z=result.z;car.h=result.yaw;
+        if(result.hit){Object.assign(car,oldPath);car.v=0;car.brake=1;if(!contacts.hitsPerson(nx,nz,nh,car.len/2,hw,car)&&(car.stuckT=(car.stuckT||0)+dt)>5){car.stuckT=0;car.ghostT=2;}}
+        else if(car.stuckT)car.stuckT=Math.max(0,car.stuckT-dt*.5);
+      }
 
       const y = groundY(car.x, car.z) + ROAD_Y;
       R.set(car.ri, car.x, y, car.z, car.h);

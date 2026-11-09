@@ -388,7 +388,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       const step=Math.min(distance*k,p.v*dt);
       const moved=movePerson(p,p.x+(distance?dx/distance*step:0),p.z+(distance?dz/distance*step:0));
       if(!moved){Object.assign(p,oldPath);go=0;p.stuck=(p.stuck||0)+dt;
-        if(p.stuck>1.2&&solid(tx,tz)){p.dir*=-1;p.stuck=0;}
+        if(p.stuck>1.2&&solid(tx,tz)||p.stuck>3){p.dir*=-1;p.stuck=0;} // a wall, or a car or crowd that won't clear
       }else p.stuck=0;
       p.actualSpeed=Math.min(p.v,Math.hypot(p.x-oldX,p.z-oldZ)/Math.max(dt,.001));
       if(p.actualSpeed>.08){

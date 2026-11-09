@@ -15,7 +15,7 @@ let dest = null; // {x,z,name,spot}
 let route = null; // flat [x,z,...]
 let routeLen = 0;
 let routeFrom = { x: 1e9, z: 1e9, mode: '' };
-let routeT = 0, signT = 0, fpsT = 0, fpsN = 0, presetT = 0, whereT = 0;
+let routeT = 0, signT = 0, fpsT = 0, fpsN = 0, fpsAge = 0, presetT = 0, whereT = 0;
 let labelsOn = true;
 let timeBtns = [];
 let toastTimer = 0;
@@ -274,11 +274,12 @@ export default {
   update(dt, ctx) {
     // fps
     fpsN++;
+    // the first seconds after loading are shader warm-up: don't greet the player with a red number
     if ((fpsT += dt) >= 0.5) {
       const fps = Math.round(fpsN / fpsT);
       const el = $('hud-fps');
-      el.textContent = fps;
-      el.className = 'fps' + (fps < 25 ? ' bad' : fps < 45 ? ' warn' : '');
+      if ((fpsAge += fpsT) > 6) el.textContent = fps;
+      if (fpsAge > 6) el.className = 'fps' + (fps < 20 ? ' bad' : fps < 40 ? ' warn' : '');
       fpsN = 0;
       fpsT = 0;
     }
