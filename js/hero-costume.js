@@ -205,13 +205,24 @@ function createCape(model, root, { len = 1.05, legR = 0.2 } = {}) {
       if (Math.hypot(top[0] - topPrev[0], top[1] - topPrev[1], top[2] - topPrev[2]) > 3) reset();
       if (!(dt > 0)) return; // a zero-length frame would divide the velocities by zero
       dt = Math.min(dt, 0.05); clock += dt;
+      // Carry the cloth along with most of the hero's own motion so it never has to chase them across a metre a frame
+      // (that is what stretched it off the shoulders in fast flight); air drag still acts on its true world speed.
+      let mx = 0, my = 0, mz = 0;
+      for (let i = 0; i < W; i++) (mx += top[i * 3] - topPrev[i * 3]), (my += top[i * 3 + 1] - topPrev[i * 3 + 1]), (mz += top[i * 3 + 2] - topPrev[i * 3 + 2]);
+      mx /= W; my /= W; mz /= W;
+      const CARRY = 0.85;
+      for (let k = W * 3; k < N * 3; k += 3) {
+        pos[k] += mx * CARRY; pos[k + 1] += my * CARRY; pos[k + 2] += mz * CARRY;
+        prev[k] += mx * CARRY; prev[k + 1] += my * CARRY; prev[k + 2] += mz * CARRY;
+      }
+      const carriedX = (mx * CARRY) / dt, carriedY = (my * CARRY) / dt, carriedZ = (mz * CARRY) / dt;
       const steps = Math.max(1, Math.min(4, Math.ceil(dt * 120))), h = dt / steps;
       for (let s = 1; s <= steps; s++) {
         const u = s / steps;
         for (let i = 0; i < W; i++) for (let c = 0; c < 3; c++) pos[i * 3 + c] = topPrev[i * 3 + c] + (top[i * 3 + c] - topPrev[i * 3 + c]) * u;
         for (let p = W; p < N; p++) {
           const k = p * 3, row = Math.floor(p / W), col = p % W;
-          const vx = (pos[k] - prev[k]) / h, vy = (pos[k + 1] - prev[k + 1]) / h, vz = (pos[k + 2] - prev[k + 2]) / h;
+          const vx = (pos[k] - prev[k]) / h + carriedX, vy = (pos[k + 1] - prev[k + 1]) / h + carriedY, vz = (pos[k + 2] - prev[k + 2]) / h + carriedZ;
           const sp = Math.hypot(vx, vy, vz);
           // still-air drag makes it trail; a speed-scaled flutter keeps it alive in flight
           const fl = Math.sin(clock * 14 + col * 1.1 + row * 0.8) * Math.min(6, sp * 0.35) * (row / H);
@@ -222,13 +233,20 @@ function createCape(model, root, { len = 1.05, legR = 0.2 } = {}) {
             prev[k + c] = cur;
           }
         }
-        for (let it = 0; it < 4; it++) {
+        for (let it = 0; it < 6; it++) {
           for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
             const p = j * W + i;
             if (j < H - 1) link(p, p + W, SEG);
             if (i < W - 1) link(p, p + 1, hSeg * (1 + j * 0.06)); // flares toward the hem
           }
           for (let p = W; p < N; p++) collide(p * 3);
+        }
+        // Long-range attachment: no point may drift further from its column's pinned top than its rest length down the
+        // cloth, so however hard the hero turns or dives the cape cannot stretch away from the shoulders
+        for (let j = 1; j < H; j++) for (let i = 0; i < W; i++) {
+          const k = (j * W + i) * 3, t = i * 3, max = j * SEG * 1.02;
+          const dx = pos[k] - pos[t], dy = pos[k + 1] - pos[t + 1], dz = pos[k + 2] - pos[t + 2], d = Math.hypot(dx, dy, dz);
+          if (d > max) { const f = max / d; pos[k] = pos[t] + dx * f; pos[k + 1] = pos[t + 1] + dy * f; pos[k + 2] = pos[t + 2] + dz * f; }
         }
       }
       if (!Number.isFinite(pos[pos.length - 1])) return reset();

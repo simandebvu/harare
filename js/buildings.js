@@ -42,7 +42,9 @@ const PALETTE = {
 
 // Named landmarks: kind overrides the typology, extras add hand-built massing
 const LANDMARKS = [
-  { re: /Reserve Bank/i, kind: 'post', style: 6, wall: '#8d8a86', mat: MAT.granite, crown: 'cone' }, // granite tower, Great Zimbabwe cone top
+  // a rounded octagonal drum of blue-green reflective curtain glass between dark grey mullions, a recessed glazed lobby
+  // and a dark cap band (from photos of the tower)
+  { re: /Reserve Bank/i, kind: 'post', style: 2, wall: '#56a3ab', mat: MAT.glass, crown: 'rbz' },
   { re: /Joina City/i, kind: 'post', style: 2, wall: '#6f8fa8', mat: MAT.glass, podium: 2, spire: 28 },
   { re: /Karigamombe/i, kind: 'post', style: 6, wall: '#9a8270', mat: MAT.precast, crown: 'step' }, // brown precast
   { re: /Old Mutual Centre/i, kind: 'post', style: 6, wall: '#7a6550', mat: MAT.granite, crown: 'step' },
@@ -463,6 +465,21 @@ export function buildBuildings(scene, DATA, renderer) {
         for (const e of podEdges) if (shop && e.len > 6 && streetGap(e.mx + e.nx, e.mz + e.nz) < 6) canopy(e, base, r, c3.set('#cfc9bd'));
         edges = walls(tower, podTop, top, base, c, f, parapet);
         roof(tower, top, roofCol, roofF);
+      } else if (lm?.crown === 'rbz') {
+        const dark = c3.set('#3b4045'), lobbyTop = base + 7, capY = top - 4.5;
+        const lobby = inset(ring, 0.92, cx, cz) || ring;
+        walls(lobby, y0, lobbyTop, base, c2.set('#2a3a40'), [2, seed, 1 + 10 * MAT.glass]);
+        roof(ring, lobbyTop + 0.4, dark, mf(MAT.concrete)); // the soffit over the lobby
+        edges = walls(ring, lobbyTop, capY, base, c, f, 0, null);
+        walls(ring, capY, top, base, dark, mf(MAT.concrete), 0.4);
+        roof(ring, top, roofCol, roofF);
+        const plant = inset(ring, 0.55, cx, cz);
+        if (plant) (walls(plant, top, top + 3.2, base, dark, mf(MAT.concrete))), roof(plant, top + 3.2, roofCol, roofF);
+        // dark mullions: a pier at every corner of the octagon and down the middle of each face
+        for (const e of edges) {
+          box(e.ax + e.nx * 0.25, e.az + e.nz * 0.25, lobbyTop, 1.1, 1.1, capY - lobbyTop, dark, yawOf(e), mf(MAT.concrete));
+          if (e.len > 9) box(e.mx + e.nx * 0.2, e.mz + e.nz * 0.2, lobbyTop, 0.45, 0.5, capY - lobbyTop, dark, yawOf(e), mf(MAT.concrete));
+        }
       } else {
         edges = walls(ring, y0, top, base, c, f, parapet, blank);
         roof(ring, top, roofCol, roofF);
@@ -470,19 +487,8 @@ export function buildBuildings(scene, DATA, renderer) {
       const outline = tower || ring;
 
       // Crowns
-      if (lm?.crown === 'cone') {
-        // Stepped drum and cone: the RBZ's nod to the conical tower at Great Zimbabwe
-        let k = 1, y = top;
-        for (let i = 0; i < 4; i++) {
-          k *= 0.82;
-          const rr = inset(outline, k, cx, cz);
-          if (!rr) break;
-          walls(rr, y, y + 4, base, c, f);
-          roof(rr, y + 4, roofCol, roofF);
-          y += 4;
-        }
-        const rad = Math.sqrt(area) * k * 0.35;
-        stamp(UNIT_CONE, cx, y + rad * 0.9, cz, rad, rad * 1.8, rad, 0, c, mf(mat));
+      if (lm?.crown === 'rbz') {
+        // built above with its own massing
       } else if (lm?.crown === 'step' || (kind === 'post' && r() < 0.5)) {
         const rr = inset(outline, 0.82, cx, cz);
         if (rr) {

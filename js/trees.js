@@ -271,6 +271,7 @@ export function buildTrees(scene, DATA, blocked) {
   const last = new THREE.Vector3(Infinity, 0, 0), lastDir = new THREE.Vector3(), camDir = new THREE.Vector3(), lastShadow = new THREE.Vector3(Infinity, 0, 0);
   let lastProj = '';
   const fill = new Array(SPECIES.length * VARIANTS * 3).fill(0);
+  const gone = new Uint8Array(N); // trees cleared for a plaza (js/features/monuments.js)
   function regroup(cam) {
     fill.fill(0);
     pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
@@ -279,6 +280,7 @@ export function buildTrees(scene, DATA, blocked) {
     const p = cam.position;
     const far = p.y < 40 ? FAR_LOW : FAR_HIGH;
     for (let i = 0; i < N; i++) {
+      if (gone[i]) { lod[i] = 255; continue; }
       const dx = cx[i] - p.x, dy = cy[i] - p.y, dz = cz[i] - p.z;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       let next = d < LOD_NEAR ? 0 : d < LOD_MID ? 1 : d < far ? 2 : 255;
@@ -321,6 +323,7 @@ export function buildTrees(scene, DATA, blocked) {
     pfill.fill(0);
     const R2 = SHADOW_R * SHADOW_R;
     for (let i = 0; i < N; i++) {
+      if (gone[i]) continue;
       const dx = cx[i] - p.x, dz = cz[i] - p.z;
       if (dx * dx + dz * dz > R2) continue;
       const pr = proxies[kind[i]];
@@ -387,6 +390,18 @@ export function buildTrees(scene, DATA, blocked) {
   return {
     count: N,
     group,
+    // Remove every tree within r of (x, z) from now on; returns how many went
+    clearAround(x, z, r) {
+      let n = 0;
+      for (let i = 0; i < N; i++) if (!gone[i] && (cx[i] - x) ** 2 + (cz[i] - z) ** 2 < r * r) (gone[i] = 1), n++;
+      if (n) last.set(Infinity, 0, 0), lastShadow.set(Infinity, 0, 0);
+      return n;
+    },
+    near(x, z, r) {
+      let n = 0;
+      for (let i = 0; i < N; i++) if (!gone[i] && (cx[i] - x) ** 2 + (cz[i] - z) ** 2 < r * r) n++;
+      return n;
+    },
     update(dt, camera) {
       uniforms.uTime.value += dt;
       camera.updateMatrixWorld();

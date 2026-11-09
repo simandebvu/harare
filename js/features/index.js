@@ -9,7 +9,8 @@ import map from './map.js';
 import audio from './audio.js';
 import suburbs from './suburbs.js';
 import furniture from './furniture.js';
+import monuments from './monuments.js';
 import lighting from './lighting.js';
 import shadows from './shadows.js';
 
-export const features = [game, map, shift, garage, audio, suburbs, furniture, lighting, shadows, playMenu, heroEffects, supplyDrop];
+export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, playMenu, heroEffects, supplyDrop];
