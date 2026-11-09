@@ -649,6 +649,17 @@ export function buildBuildings(scene, DATA, renderer) {
     return false;
   }
 
+  // Highest roof (absolute y) under (x, z) that is no higher than `below`; -Infinity off any building
+  blocked.roofAt = (x, z, below = Infinity) => {
+    let top = -Infinity;
+    for (const i of grid.query(x, z)) {
+      const fp = footprints[i], b = fp.bounds;
+      if (x < b[0] || x > b[2] || z < b[1] || z > b[3] || fp.h > below || fp.h <= top) continue;
+      if (pointInPoly(x, z, fp.p)) top = fp.h;
+    }
+    return top;
+  };
+
   // Cache provably clear half-metre cells. Near a wall we still test the exact circle.
   const clearCells=new Map();
   blocked.circle = (x, z, radius, y = 0) => {

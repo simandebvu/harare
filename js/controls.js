@@ -175,7 +175,7 @@ export class Controls {
     const prev = this.mode;
     if (this.flightStarted && prev === 'fly' && mode === 'fly') { if(this.heli.phase!=='impact')this.heli.landing = null; return; }
     if(prev==='fly' && ['charge','impact'].includes(this.heli.phase))return false;
-    if (this.flightStarted && prev === 'fly' && mode !== 'fly' && this.rig.current.id !== 'map' && this.heli.y > groundY(this.heli.x,this.heli.z)+.22) {
+    if (this.flightStarted && prev === 'fly' && mode !== 'fly' && this.rig.current.id !== 'map' && this.heli.y > this.surfaceY(this.heli.x,this.heli.z,this.heli.y)+.22) {
       this.heli.landing = mode;
       dispatchEvent(new CustomEvent('harare:landing'));
       return false;
@@ -193,7 +193,8 @@ export class Controls {
         this.rig.yaw = c.yaw;
       }
       w.vx = w.vz = w.vy = 0;
-      w.y = groundY(w.x, w.z) + 0.16;
+      w.air = false;
+      w.y = (prev === 'fly' ? this.surfaceY(w.x, w.z, this.heli.y) : groundY(w.x, w.z)) + 0.16;
       this.nudgeFree(w);
     }
     if (mode === 'drive') {
@@ -212,7 +213,7 @@ export class Controls {
       h.yaw = prev === 'walk' ? this.rig.yaw : c.yaw;
       h.x = src.x;
       h.z = src.z;
-      h.y = groundY(src.x,src.z)+.16;
+      h.y = prev === 'walk' ? w.y : groundY(src.x,src.z)+.16;
       h.landing=null;h.bank=0;h.tilt=0;h.phase='charge';h.phaseTime=0;
       h.pitch = -0.12;
       h.vx = h.vy = h.vz = 0;
@@ -254,8 +255,15 @@ export class Controls {
   }
 
   // Spawn/teleport clear of walls with room for the actor's whole body.
+  // What you stand on at (x, z): the street, or a roof no higher than y (+ a step) — so heroes can land on rooftops
+  surfaceY(x, z, y = 0) {
+    return Math.max(groundY(x, z), this.blocked.roofAt?.(x, z, y + 0.6) ?? -Infinity);
+  }
+
   nudgeFree(o) {
-    const hit=(x,z)=>o===this.car?this.carHits(x,z,o.yaw)||!!this.contacts?.carBlocked(x,z,o.yaw,o.len/2,o.width/2,o,false):this.walkHits(x,z,.3,0,o);
+    // a walker on a roof is tested at its own height, or it would be shoved off the roof it stands on
+    const feet=o===this.walk?Math.max(0,o.y-groundY(o.x,o.z)):0;
+    const hit=(x,z)=>o===this.car?this.carHits(x,z,o.yaw)||!!this.contacts?.carBlocked(x,z,o.yaw,o.len/2,o.width/2,o,false):this.walkHits(x,z,.3,feet,o);
     if(!hit(o.x,o.z))return;
     const ox=o.x,oz=o.z;
     for(let r=.5;r<100;r+=.5)for(let k=0;k<16;k++) {
@@ -448,11 +456,12 @@ export class Controls {
     const fast = planted ? 0 : h.landing ? 7 : I.run ? HELI_FAST : HELI_V;
     const fx = Math.sin(h.yaw), fz = Math.cos(h.yaw);
     const up = I.up + (I.jump ? 1 : 0) - (this.keys.has('KeyC') ? 1 : 0);
-    const ground = groundY(h.x,h.z)+.16;
+    const ground = this.surfaceY(h.x,h.z,h.y)+.16; // roofs count: hover and landing speed measure from them
     const clearance=h.y-ground;
     // Fly where you look: W follows the view's pitch (look up to climb, down to dive). A small dead zone keeps level
     // cruising level; the view only tilts ±0.9 rad, so the flight path is steepened to reach ~80° climbs and dives.
-    const look = Math.abs(h.pitch) > 0.15 ? h.pitch - Math.sign(h.pitch) * 0.15 : 0;
+    // (dead zone ±0.3 rad: with mouse-look the view keeps any small tilt you leave it at, which used to climb for ever)
+    const look = Math.abs(h.pitch) > 0.3 ? h.pitch - Math.sign(h.pitch) * 0.3 : 0;
     const climb = THREE.MathUtils.clamp(look * 1.9, -1.4, 1.4);
     h.climb = climb;
     const tx = fx * I.fwd * fast * Math.cos(climb), tz = fz * I.fwd * fast * Math.cos(climb);
@@ -475,7 +484,8 @@ export class Controls {
       const x=px+h.vx*dt/steps,y=py+h.vy*dt/steps,z=pz+h.vz*dt/steps;
       if(!hit(x,py,pz))px=x;else h.vx=0;
       if(!hit(px,py,z))pz=z;else h.vz=0;
-      if(!hit(px,y,pz))py=y;else h.vy=0;
+      // rising or sinking only buildings and roofs stop the hero; a post or fin they brush against must not pin them
+      if(!(this.blocked.circle?.(px,pz,.45,y)||this.blocked(px,pz,y)))py=y;else h.vy=0;
     }
     nx=px;ny=py;nz=pz;
     h.x = nx;
@@ -485,9 +495,10 @@ export class Controls {
     const fwdV = h.vx * fx + h.vz * fz;
     h.bank += (I.side * 0.22 - h.bank) * Math.min(1, dt * 3);
     h.tilt += ((tx * fx + tz * fz - fwdV) * -0.004 - h.tilt) * Math.min(1, dt * 3);
-    if(h.landing && h.phase!=='impact' && h.y<=groundY(h.x,h.z)+.22){
-      h.phase='impact';h.phaseTime=0;h.y=groundY(h.x,h.z)+.16;h.vx=h.vy=h.vz=0;
-      dispatchEvent(new CustomEvent('harare:hero-burst',{detail:{x:h.x,y:groundY(h.x,h.z),z:h.z,kind:'land'}}));
+    const touch=this.surfaceY(h.x,h.z,h.y); // the roof or street below: a landing ends on whichever comes first
+    if(h.landing && h.phase!=='impact' && h.y<=touch+.22){
+      h.phase='impact';h.phaseTime=0;h.y=touch+.16;h.vx=h.vy=h.vz=0;
+      dispatchEvent(new CustomEvent('harare:hero-burst',{detail:{x:h.x,y:touch,z:h.z,kind:'land'}}));
     }
     if(h.phase==='impact' && h.phaseTime>=.72){
       const next=h.landing||'walk';h.landing=null;h.phase='cruise';
@@ -553,7 +564,9 @@ export class Controls {
       if(!blocked(w.x,nz)) w.z=nz; else w.vz=0;
     }
     // Jump / gravity
-    const gy = groundY(w.x, w.z) + 0.16;
+    // Stand on the roof or street beneath; walking off a roof edge starts a fall
+    const gy = this.surfaceY(w.x, w.z, w.y) + 0.16;
+    if (!w.air && w.y > gy + 0.3) (w.air = true), (w.vy = 0);
     if (!w.air && I.jump && !this.jumpHeld) (w.vy = JUMP_V), (w.air = true), dispatchEvent(new CustomEvent('harare:jump'));
     this.jumpHeld = I.jump;
     if (w.air) {
