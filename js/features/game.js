@@ -4,13 +4,13 @@
 
 const LABELS = {
   drive: ['Kombi · Toyota HiAce', 'Free roam'],
-  walk: ['Skyweaver · On foot', ''],
-  fly: ['Skyweaver', 'Superflight'],
+  walk: ['Hero · On foot', ''],
+  fly: ['Hero', 'Flight'],
 };
 const KEYS = {
   drive: '<kbd>W</kbd><kbd>S</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> brake · <kbd>Shift</kbd> boost · <kbd>H</kbd> hoot',
   walk: '<kbd>WASD</kbd> walk · click to look · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump',
-  fly: '<kbd>WASD</kbd> fly · <kbd>Q</kbd><kbd>E</kbd> down / up · click to look · <kbd>Shift</kbd> fast',
+  fly: '<kbd>WASD</kbd> fly · <kbd>Space</kbd><kbd>C</kbd> up / down · click to look · <kbd>Shift</kbd> fast',
 };
 const TOUCH_ACTIONS = {
   drive: [['brake', 'Brake'], ['run', 'Boost'], ['hoot', 'Hoot']],

@@ -78,7 +78,7 @@
         <svg class="badge" viewBox="0 0 25200 12600" aria-hidden="true"><use href="#zw-flag"/></svg>
         <div class="brand-titles">
           <h1 class="title">Slop Harare</h1>
-          <div class="brand-sub"><span class="brand-tag">Sunshine City · </span>three.js · <span id="hud-fps" class="fps">--</span> fps</div>
+          <div class="brand-sub"><span class="brand-tag">Sunshine City · </span><span id="hud-fps" class="fps">--</span> fps</div>
         </div>
       </div>
     </header>
@@ -126,7 +126,7 @@
     <footer class="hud-bc">
       <div id="help"></div>
       <nav class="panel modes" aria-label="How to get around">
-        <button data-mode="fly" class="active" type="button" title="Skyweaver flight [1]"><svg class="icon" aria-hidden="true"><use href="#i-fly"/></svg><span class="mode-label">Fly</span><kbd>1</kbd></button>
+        <button data-mode="fly" class="active" type="button" title="Fly [1]"><svg class="icon" aria-hidden="true"><use href="#i-fly"/></svg><span class="mode-label">Fly</span><kbd>1</kbd></button>
         <button data-mode="walk" type="button" title="Walk [2]"><svg class="icon" aria-hidden="true"><use href="#i-walk"/></svg><span class="mode-label">Walk</span><kbd>2</kbd></button>
         <button data-mode="drive" type="button" title="Drive your selected taxi [3]"><svg class="icon" aria-hidden="true"><use href="#i-kombi"/></svg><span class="mode-label">Drive</span><kbd>3</kbd></button>
       </nav>
@@ -250,7 +250,7 @@
     // waving flag, rotating quips and facts while the city builds. Click the kombi to hoot.
     (() => {
       const bar = document.getElementById('loading-bar'), st = document.getElementById('loading-status'), box = document.getElementById('loading');
-      const STEPS = [[/streets/, 22], [/buildings/, 40], [/jacarandas/, 62], [/kombis/, 74], [/pavements/, 86], [/player/, 93]];
+      const STEPS = [[/streets/, 22], [/buildings/, 40], [/jacarandas/, 58], [/kombis/, 66], [/pavements/, 72], [/player/, 76], [/warming/, 97]];
       let pct = 6;
       const set = (p) => { pct = Math.max(pct, p); bar.style.width = pct + '%'; box.style.setProperty('--p', pct); };
       set(6);
@@ -307,9 +307,29 @@
 
       new MutationObserver(() => {
         const t = st.textContent;
-        if (/wrong/.test(t)) { clearInterval(tq); clearInterval(tf); return box.classList.add('error'); }
+        if (/wrong/.test(t) && !box.classList.contains('error')) return fail(t);
         for (const [re, p] of STEPS) if (re.test(t)) set(p);
+        const n = /\((\d+)\/(\d+)\)/.exec(t);
+        if (n) set(Math.round(78 + (18 * n[1]) / n[2]));
       }).observe(st, { childList: true, characterData: true, subtree: true });
+      // Failures say so plainly and offer a reload, instead of a loader that spins forever
+      let slow;
+      const fail = (msg) => {
+        if (box.classList.contains('done') || box.classList.contains('error')) return;
+        clearInterval(creep); clearInterval(tq); clearInterval(tf); clearTimeout(slow);
+        box.classList.add('error');
+        st.textContent = msg;
+        const again = document.createElement('button');
+        again.type = 'button'; again.className = 'loader-retry'; again.textContent = 'Reload';
+        again.onclick = () => location.reload();
+        st.after(again);
+      };
+      window.__loadFail = fail;
+      const gl = document.createElement('canvas').getContext('webgl2');
+      if (!gl) fail("This browser can't draw the 3D city: it needs WebGL 2. Try an up-to-date Chrome, Edge, Firefox or Safari.");
+      addEventListener('unhandledrejection', (e) => !box.classList.contains('done') && fail("Couldn't build the city: " + (e.reason?.message || e.reason)));
+      // A slow connection or machine: reassure rather than look frozen
+      slow = setTimeout(() => { if (!box.classList.contains('done')) factEl.textContent = 'Still building: this is a big city (about 8 MB, 5,000 buildings and 11,000 trees). Hang tight!'; }, 30000);
       new MutationObserver(() => {
         if (!box.classList.contains('done')) return;
         set(100); clearInterval(creep);
@@ -317,6 +337,6 @@
       }).observe(box, { attributes: true, attributeFilter: ['class'] });
     })();
   </script>
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main.js" onerror="window.__loadFail?.('Couldn\'t download the game. Check your connection (or any content blocker) and reload.')"></script>
 </body>
 </html>

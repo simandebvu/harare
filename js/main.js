@@ -221,9 +221,9 @@ async function init() {
   // --- HUD -------------------------------------------------------------------------------------------------------------
   const help = document.getElementById('help');
   const HELP = {
-    fly: 'Skyweaver · look up or down and press W to climb or dive · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
-    walk: 'Click to mouse-look (Esc frees the cursor) · WASD walk · Shift run · Space jump · V camera',
-    drive: 'Click to mouse-look · W/S accelerate & reverse · A/D steer · Space brake · keep left!',
+    fly: 'Look up or down and hold W to climb or dive · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
+    walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · R enter taxi · V camera',
+    drive: 'Click the city to look around · W/S gas & reverse · A/D steer · Space brake · R get out · keep left!',
   };
   const buttons = [...document.querySelectorAll('.modes button')];
   const setMode = (m) => {
@@ -282,7 +282,11 @@ async function init() {
     teleport: (x, z, yaw) => controls.teleport(x, z, yaw),
   };
   window.__harare.ctx = ctx;
-  for (const f of features) await f.init?.(ctx);
+  // Narrate each feature so the loading bar keeps moving through the last stretch (index.html maps "(i/n)" to 78–96%)
+  for (let i = 0; i < features.length; i++) {
+    await step(`street furniture, lamps and missions (${i + 1}/${features.length})…`);
+    await features[i].init?.(ctx);
+  }
 
   const QUALITY = ['low (no post-processing)', 'medium (bloom + grade)', 'high (+ ambient occlusion)'];
   let toastT = 0;
@@ -376,6 +380,7 @@ async function init() {
       if ((declutterT -= dt) < 0) (declutterT = 0.2), declutterLabels();
     }
   }
+  await step('warming up the engine…'); // the first frame compiles every shader
   frame();
   renderer.setAnimationLoop(frame);
   document.getElementById('loading').classList.add('done');
