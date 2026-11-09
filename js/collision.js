@@ -40,14 +40,17 @@ export function boxesOverlap(a,b) {
   return true;
 }
 // Substeps cover both translation and turning, preventing tunnelling on slower frames.
+const sweepScratch={x:0,z:0,yaw:0};
 export function sweepPose(from,to,blocked,spacing=.16) {
   const turn=Math.atan2(Math.sin(to.yaw-from.yaw),Math.cos(to.yaw-from.yaw));
   const n=Math.max(1,Math.ceil((Math.hypot(to.x-from.x,to.z-from.z)+Math.abs(turn)*3)/spacing));
-  let last={...from};
+  let lx=from.x,lz=from.z,ly=from.yaw;
+  const next=sweepScratch;
   for(let i=1;i<=n;i++) {
-    const t=i/n,next={x:from.x+(to.x-from.x)*t,z:from.z+(to.z-from.z)*t,yaw:from.yaw+turn*t};
-    if(blocked(next)) return {...last,hit:true};
-    last=next;
+    const t=i/n;
+    next.x=from.x+(to.x-from.x)*t;next.z=from.z+(to.z-from.z)*t;next.yaw=from.yaw+turn*t;
+    if(blocked(next)) return {x:lx,z:lz,yaw:ly,hit:true};
+    lx=next.x;lz=next.z;ly=next.yaw;
   }
-  return {...last,hit:false};
+  return {x:lx,z:lz,yaw:ly,hit:false};
 }

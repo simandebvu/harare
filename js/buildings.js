@@ -389,7 +389,8 @@ export function buildBuildings(scene, DATA, renderer) {
   const DISH_YAW = Math.atan2(0.62, -0.78);
   const neEdge = (edges) => edges.reduce((a, b) => (b.len > 3 && b.nx * 0.62 - b.nz * 0.78 > (a ? a.nx * 0.62 - a.nz * 0.78 : -9) ? b : a), null);
 
-  DATA.buildings.forEach((bd, idx) => {
+  const spans = []; // [firstVertex, endVertex, centroidX, centroidZ] per building, to tile the mesh afterwards
+  const one = (bd, idx) => {
     const ring = bd.p;
     const n = ring.length / 2;
     const [cx, cz] = polyCentroid(ring);
@@ -600,10 +601,14 @@ export function buildBuildings(scene, DATA, renderer) {
     footprints.push({ p: ring, h: top, bounds, missionRoof: !lm && bd.h >= 15, name: bd.n });
     grid.insert(footprints.length - 1, ...bounds);
     if (bd.n && lm && !labels.some((l) => lm.re.test(l.n))) labels.push({ n: bd.n, x: cx, y: top + 8, z: cz });
+  };
+  DATA.buildings.forEach((bd, idx) => {
+    const v0 = B.n;
+    one(bd, idx);
+    if (B.n > v0) { const [cx, cz] = polyCentroid(bd.p); spans.push([v0, B.n, cx, cz]); }
   });
 
-  const geo = B.geometry();
-  console.log(`[harare] buildings: ${(B.n / 1e6).toFixed(2)}M vertices, ${acCount} air-cons`);
+  console.log(`[harare] buildings: ${(B.n / 1e6).toFixed(2)}M vertices, ${acCount} air-cons`); // tiled below
   const { texture: matTex, means } = buildingMaterials(renderer);
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.0 });
   const uniforms = { uNight: { value: 0 }, uTime: { value: 0 }, uMatTex: { value: matTex }, uMatMean: { value: means } };
@@ -632,10 +637,37 @@ export function buildBuildings(scene, DATA, renderer) {
       );
   };
   mat.customProgramCacheKey = () => 'harare-buildings-v2';
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = mesh.receiveShadow = true;
-  mesh.onBeforeRender = () => (uniforms.uTime.value = performance.now() / 1000);
+  // One mesh for the whole city could never be culled: it was drawn in full for the shadow map, the AO normals and
+  // the main pass every frame. Tiles of ~160 m (by building centroid) let three.js skip whatever is off screen.
+  const mesh = new THREE.Group();
+  mesh.name = 'buildings';
+  const TILE = 160, tiles = new Map();
+  for (const sp of spans) {
+    const k = `${Math.floor(sp[2] / TILE)},${Math.floor(sp[3] / TILE)}`;
+    let t = tiles.get(k);
+    if (!t) tiles.set(k, (t = { list: [], n: 0 }));
+    t.list.push(sp); t.n += sp[1] - sp[0];
+  }
+  const tick = () => (uniforms.uTime.value = performance.now() / 1000);
+  const freeCPU = function () { this.array = null; }; // the GPU has it now: drop the JS copy (~180 MB across the city)
+  for (const t of tiles.values()) {
+    const g = new THREE.BufferGeometry();
+    for (const [name, src, k] of [['position', B.pos, 3], ['normal', B.nrm, 3], ['color', B.col, 3], ['aWall', B.uv, 2], ['aFac', B.fac, 3]]) {
+      const a = new Float32Array(t.n * k);
+      let o = 0;
+      for (const [v0, v1] of t.list) { a.set(src.subarray(v0 * k, v1 * k), o); o += (v1 - v0) * k; }
+      g.setAttribute(name, new THREE.BufferAttribute(a, k));
+    }
+    g.computeBoundingBox(); g.computeBoundingSphere();
+    for (const attr of Object.values(g.attributes)) attr.onUpload(freeCPU);
+    const m = new THREE.Mesh(g, mat);
+    m.castShadow = m.receiveShadow = true;
+    m.matrixAutoUpdate = false;
+    m.onBeforeRender = tick;
+    mesh.add(m);
+  }
   scene.add(mesh);
+  B.pos = B.nrm = B.col = B.uv = B.fac = null;
   const signMesh = signs.build(scene);
 
   // Is (x, z) inside a building taller than y?

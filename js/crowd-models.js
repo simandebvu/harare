@@ -23,22 +23,27 @@ export function createCrowdModels(scene,people,camera) {
       }
     }catch(e){console.warn('[harare] Crowd model unavailable; using procedural people.',e.message);}
   }));
+  const candidates=[[],[]],byCd=(a,b)=>a.cd-b.cd;
   return {ready,pools,update(dt){
     for(const p of shown)people.figures.hide(p.i,!!p.hidden);shown.clear();
     matrix.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);frustum.setFromProjectionMatrix(matrix);
-    const candidates=[[],[]];
-    for(const p of [...people.walkers,...people.loiter]){
+    candidates[0].length=0;candidates[1].length=0;
+    for(const list of [people.walkers,people.loiter])for(let i=0;i<list.length;i++){
+      const p=list[i];
       if(p.hidden||!p.look||p.look.load||p.s<.75)continue;
-      const d=(p.x-camera.position.x)**2+(p.z-camera.position.z)**2+(camera.position.y-groundY(p.x,p.z)-1)**2;
-      sphere.center.set(p.x,groundY(p.x,p.z)+1,p.z);
-      if(d<48**2&&frustum.intersectsSphere(sphere))candidates[p.look.fem?1:0].push([p,d]);
+      const gy=groundY(p.x,p.z);
+      const d=(p.x-camera.position.x)**2+(p.z-camera.position.z)**2+(camera.position.y-gy-1)**2;
+      if(d>=2304)continue;
+      sphere.center.set(p.x,gy+1,p.z);
+      if(frustum.intersectsSphere(sphere)){p.cd=d;candidates[p.look.fem?1:0].push(p);}
     }
     for(let sex=0;sex<2;sex++){
       for(const o of pools[sex])o.root.visible=false;
-      candidates[sex].sort((a,b)=>a[1]-b[1]);
-      const selected=candidates[sex].slice(0,pools[sex].length).map(([p])=>p),wanted=new Set(selected);
-      for(const o of pools[sex])if(!wanted.has(o.person))o.person=null;
-      selected.forEach(p=>{
+      const selected=candidates[sex];
+      selected.sort(byCd);
+      if(selected.length>pools[sex].length)selected.length=pools[sex].length;
+      for(const o of pools[sex])if(o.person&&!selected.includes(o.person))o.person=null;
+      for(let si=0;si<selected.length;si++){const p=selected[si];
         let o=pools[sex].find(o=>o.person===p);
         if(!o){o=pools[sex].find(o=>!o.person);o.person=p;o.blend=0;}
         const L=p.look,speed=p.actualSpeed??0;
@@ -54,7 +59,7 @@ export function createCrowdModels(scene,people,camera) {
         }
         o.walk.setEffectiveWeight(move);o.idle.setEffectiveWeight(1-move);o.walk.setEffectiveTimeScale(Math.max(.25,speed/(1.4*p.s*.95)));o.mixer.update(Math.min(dt,.1));
         people.figures.hide(p.i,true);shown.add(p);
-      });
+      }
     }
     people.figures.commit(people.time);
   }};

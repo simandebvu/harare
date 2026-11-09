@@ -352,6 +352,14 @@ async function init() {
     // Snap in the light's image plane: world-axis snapping makes shadows jump when driving.
     const focus = shadowFocus.set(p.x, 0, p.z);
     const span = controls.mode === 'fly' ? Math.round(Math.min(700, Math.max(200, camera.position.distanceTo(focus))) / 100) * 100 : 130;
+    // 4096² only pays off over the wide flight frustum; at street level 2048² still gives ~13 cm texels for a quarter of the fill
+    const mapSize = controls.mode === 'fly' ? 4096 : 2048;
+    if (sun.shadow.mapSize.x !== mapSize) {
+      sun.shadow.mapSize.set(mapSize, mapSize);
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
+      renderer.shadowMap.needsUpdate = true; // rebuild it even at night, when shadows aren't redrawn every frame
+    }
     shadowRight.crossVectors(sunDir, worldUp).normalize();
     if(shadowRight.lengthSq()<0.01)shadowRight.set(1,0,0);
     shadowUp.crossVectors(shadowRight,sunDir).normalize();

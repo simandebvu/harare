@@ -246,6 +246,7 @@ export function createTraffic(scene, DATA, count = 650) {
     return car.hold > 3 || time - jStarve[n] > 0.5;
   }
 
+  const FAR_SWEEP2 = 180 * 180; // beyond this from the camera, cars skip collision sweeps
   function update(dt, nightness) {
     dt = Math.min(dt, 0.1);
     time += dt;
@@ -263,9 +264,10 @@ export function createTraffic(scene, DATA, count = 650) {
       for (let i = 0; i < b.length; i++) (b[i].bi = i), (b[i].bucket = b);
     }
 
+    const vp = contacts?.viewPos?.();
     for (const car of cars) {
       const E = edges[car.e];
-      const oldPath={e:car.e,dir:car.dir,s:car.s,lane:car.lane,next:car.next};
+      const oE=car.e,oDir=car.dir,oS=car.s,oLane=car.lane,oNext=car.next;
       const remaining = E.L - car.s;
       let gap = 1e9;
       // Leader in the same lane on this edge
@@ -371,11 +373,12 @@ export function createTraffic(scene, DATA, count = 650) {
       // A car wedged for seconds (a parked kombi, a stray post at a tight corner) eases through instead of freezing its
       // whole queue behind it forever
       const hw=VEHICLE_TYPES[car.type].width/2;
-      if(car.ghostT>0){car.ghostT-=dt;if(contacts?.hitsPerson(nx,nz,nh,car.len/2,hw,car)){Object.assign(car,oldPath);car.v=0;}else{car.x=nx;car.z=nz;car.h=nh;}}
+      if(vp&&(car.x-vp.x)**2+(car.z-vp.z)**2>FAR_SWEEP2){car.x=nx;car.z=nz;car.h=nh;}
+      else if(car.ghostT>0){car.ghostT-=dt;if(contacts?.hitsPerson(nx,nz,nh,car.len/2,hw,car)){car.e=oE;car.dir=oDir;car.s=oS;car.lane=oLane;car.next=oNext;car.v=0;}else{car.x=nx;car.z=nz;car.h=nh;}}
       else{
         const result=sweepPose({x:car.x,z:car.z,yaw:car.h},{x:nx,z:nz,yaw:nh},p=>contacts?.carBlocked(p.x,p.z,p.yaw,car.len/2,hw,car));
         car.x=result.x;car.z=result.z;car.h=result.yaw;
-        if(result.hit){Object.assign(car,oldPath);car.v=0;car.brake=1;if(!contacts.hitsPerson(nx,nz,nh,car.len/2,hw,car)&&(car.stuckT=(car.stuckT||0)+dt)>5){car.stuckT=0;car.ghostT=2;}}
+        if(result.hit){car.e=oE;car.dir=oDir;car.s=oS;car.lane=oLane;car.next=oNext;car.v=0;car.brake=1;if(!contacts.hitsPerson(nx,nz,nh,car.len/2,hw,car)&&(car.stuckT=(car.stuckT||0)+dt)>5){car.stuckT=0;car.ghostT=2;}}
         else if(car.stuckT)car.stuckT=Math.max(0,car.stuckT-dt*.5);
       }
 

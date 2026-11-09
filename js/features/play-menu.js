@@ -66,7 +66,7 @@ export default {
   const done=()=>{looked=true;hint.hidden=true;};
   document.addEventListener('pointerlockchange',()=>document.pointerLockElement&&done());
   if(touch)ctx.renderer.domElement.addEventListener('pointermove',e=>e.buttons&&done());
-  const showHint=()=>{if(!looked)hint.hidden=false;};
+  const showHint=()=>{if(looked)return;hint.hidden=false;setTimeout(done,25000);};
   let seen=false;try{seen=localStorage.getItem('harare-welcomed')==='1';}catch{}
   if(seen)return showHint();
   const card=document.createElement('section');card.className='welcome';card.setAttribute('role','dialog');card.setAttribute('aria-labelledby','welcome-title');

@@ -269,7 +269,7 @@ export function buildTrees(scene, DATA, blocked) {
   // --- per-tree level of detail and culling ----------------------------------------------------------------------------
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4();
   const last = new THREE.Vector3(Infinity, 0, 0), lastDir = new THREE.Vector3(), camDir = new THREE.Vector3(), lastShadow = new THREE.Vector3(Infinity, 0, 0);
-  let lastProj = '';
+  let lastFov = NaN, lastAspect = NaN;
   const fill = new Array(SPECIES.length * VARIANTS * 3).fill(0);
   const gone = new Uint8Array(N); // trees cleared for a plaza (js/features/monuments.js)
   function regroup(cam) {
@@ -406,11 +406,11 @@ export function buildTrees(scene, DATA, blocked) {
       uniforms.uTime.value += dt;
       camera.updateMatrixWorld();
       camera.getWorldDirection(camDir);
-      const proj = `${camera.fov}|${camera.aspect}`;
-      if (camera.position.distanceToSquared(last) > 9 || camDir.dot(lastDir) < 0.996 || proj !== lastProj) {
+      if (camera.position.distanceToSquared(last) > 9 || camDir.dot(lastDir) < 0.996 || !(Math.abs(camera.fov - lastFov) <= 1) || camera.aspect !== lastAspect) {
         last.copy(camera.position);
         lastDir.copy(camDir);
-        lastProj = proj;
+        lastFov = camera.fov;
+        lastAspect = camera.aspect;
         regroup(camera);
       }
       if (camera.position.distanceToSquared(lastShadow) > 625) {

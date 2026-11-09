@@ -15,6 +15,17 @@ function syncBody(b) {
   b.x=b.owner.x;b.z=b.owner.z;b.yaw=b.owner.h??b.owner.yaw;
   b.sin=Math.sin(b.yaw);b.cos=Math.cos(b.yaw);return b;
 }
+const scratchA={x:0,z:0,yaw:0,hl:0,hw:0,sin:0,cos:0};
+const scratchB={x:0,z:0,yaw:0,sin:0,cos:0,hl:0,hw:0,owner:null};
+const scratchCur={x:0,z:0,yaw:0,sin:0,cos:0,hl:0,hw:0,owner:null};
+function setBox(a,x,z,yaw,hl,hw) {
+  a.x=x;a.z=z;a.yaw=yaw;a.hl=hl;a.hw=hw;a.sin=Math.sin(yaw);a.cos=Math.cos(yaw);return a;
+}
+function fillBody(o,car) {
+  const yaw=car.h??car.yaw;
+  o.x=car.x;o.z=car.z;o.yaw=yaw;o.sin=Math.sin(yaw);o.cos=Math.cos(yaw);
+  o.hl=(car.len||4.9)/2;o.hw=(car.width||1.9)/2;o.owner=car;return o;
+}
 function body(car) {
   return {x:car.x,z:car.z,yaw:car.h??car.yaw,sin:Math.sin(car.h??car.yaw),cos:Math.cos(car.h??car.yaw),
     hl:(car.len||4.9)/2,hw:(car.width||1.9)/2,owner:car};
@@ -27,6 +38,8 @@ export function createCollisionWorld(traffic, people, controls) {
     vehicles.insert(b,b.x-r,b.z-r,b.x+r,b.z+r);
   }
   return {
+    // camera position, so far-off actors can skip collision sweeps
+    viewPos:()=>controls.camera?.position,
     addStaticBox(x,z,yaw,hw,hl,height=3) {
       const b={x,z,yaw,hw,hl,height,sin:Math.sin(yaw),cos:Math.cos(yaw)};
       // exact axis-aligned bounds of the rotated box (a long diagonal wall would otherwise fill a huge square)
@@ -34,7 +47,8 @@ export function createCollisionWorld(traffic, people, controls) {
       statics.insert(b,x-ex,z-ez,x+ex,z+ez);
     },
     refresh() {
-      vehicles.map.clear();pedestrians.map.clear();
+      for(const b of vehicles.map.values())b.length=0;
+      for(const b of pedestrians.map.values())b.length=0;
       for(const car of traffic.cars)if(car.init)insertVehicle(car);
       for(const car of traffic.parkedCars)insertVehicle(car);
       if(controls.kombi.visible && !(controls.car.alt>=4.6))insertVehicle(controls.car);
@@ -62,28 +76,31 @@ export function createCollisionWorld(traffic, people, controls) {
     buildingBlocked:(x,z,yaw,hl,hw)=>controls.blocked?.box?.(x,z,yaw,hl,hw)||false,
     carBlocked(x,z,yaw,hl,hw,owner,withPeople=true) {
       if(owner!==controls.car&&controls.blocked?.box?.(x,z,yaw,hl,hw))return true;
-      const a={x,z,yaw,hl,hw,sin:Math.sin(yaw),cos:Math.cos(yaw)},r=Math.hypot(hl,hw);
+      const a=setBox(scratchA,x,z,yaw,hl,hw),r=Math.hypot(hl,hw);
+      let cached=null;
+      const cur=()=>cached??=(owner?fillBody(scratchCur,owner):false);
       // Already touching a post or wall (spawned against it): any move that backs away from it stays allowed
       if(anyNear(statics,x,z,r,b=>{
         if(!boxesOverlap(a,b))return false;
-        const now=owner&&body(owner);
+        const now=cur();
         return !(now&&boxesOverlap(now,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6);
       }))return true;
       if(anyNear(vehicles,x,z,r,b=>{
         syncBody(b);
         if(b.owner===owner||!boxesOverlap(a,b))return false;
-        const current=owner&&body(owner);
+        const current=cur();
         return !(current&&boxesOverlap(current,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6);
       }))return true;
       return withPeople&&anyNear(pedestrians,x,z,r+.3,p=>p!==owner&&circleBox(p.x,p.z,.28,a));
     },
     // a pedestrian inside this car pose (cars easing out of a wedge still never drive through people)
     hitsPerson(x,z,yaw,hl,hw,owner) {
-      const a={x,z,yaw,hl,hw,sin:Math.sin(yaw),cos:Math.cos(yaw)};
+      const a=setBox(scratchA,x,z,yaw,hl,hw);
       return anyNear(pedestrians,x,z,Math.hypot(hl,hw)+.3,p=>p!==owner&&circleBox(p.x,p.z,.28,a));
     },
     trafficGap(car,look) {
-      const b=body(car),a={...b,x:b.x+b.sin*look/2,z:b.z+b.cos*look/2,hl:b.hl+look/2};
+      const b=fillBody(scratchB,car);
+      const a=setBox(scratchA,b.x+b.sin*look/2,b.z+b.cos*look/2,b.yaw,b.hl+look/2,b.hw);
       let gap=Infinity;car.heldByParked=false;
       const r=Math.hypot(a.hl,a.hw);
       anyNear(vehicles,a.x,a.z,r,o=>{
