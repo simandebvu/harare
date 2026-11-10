@@ -493,7 +493,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   for(const p of loiter)clearSpawn(p);
   update(0);
 
-  return { deferCommit(){deferCommit=true;}, get time(){return time;}, setContacts: value=>{contacts=value;}, update, walkers, loiter, hawkerList: hawkers, figures: F, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
+  return { deferCommit(){deferCommit=true;}, get time(){return time;}, setContacts: value=>{contacts=value;}, update, walkers, loiter, hawkerList: hawkers, figures: F, stallSpots: stalls, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
 }
 
 // Upturned plastic beer crate (0.4 m tall before scaling): slatted sides as dark bands
