@@ -1,3 +1,4 @@
+import { groundY } from '../util.js';
 // js/features/map.js — navigation + HUD: toolbar (time presets, teleport, map, labels, clean view), live fps,
 // Harare street-blade signs for the nearest intersection, heading-up minimap with GPS route, and the full-screen
 // Harare Street Atlas [M] with search and click-to-route.
@@ -52,11 +53,28 @@ function teleportTo(x, z, spot) {
     const off = r.o ? 0 : Math.min(3, r.w / 4);
     C.teleport(r.x + dz * off, r.z - dx * off, Math.atan2(dx, dz));
   } else {
-    // on the pavement on the landmark's side, looking at it
+    // Stand on a pavement looking at the landmark, preferring the far side of the street (on its own side you arrive
+    // nose to its wall), and only where the chase camera has room behind you: a shop veranda at your back pins the
+    // camera overhead, staring at the tarmac
     let nx = -dz, nz = dx;
-    if ((x - r.x) * nx + (z - r.z) * nz < 0) (nx = -nx), (nz = -nz);
-    const px = r.x + nx * (r.w / 2 + 2.2), pz = r.z + nz * (r.w / 2 + 2.2);
-    C.teleport(px, pz, Math.atan2(x - px, z - pz));
+    if ((x - r.x) * nx + (z - r.z) * nz > 0) (nx = -nx), (nz = -nz);
+    const rig = C.controls.rig;
+    const tries = [];
+    for (const along of [0, 8, -8, 16, -16]) for (const inset of [0.9, 2.2]) tries.push([1, inset, along]);
+    // last resort, when the landmark sits behind other buildings from this street: look along the street towards it
+    const ahead = (x - r.x) * dx + (z - r.z) * dz >= 0 ? 1 : -1;
+    tries.push([1, 0.9, 0, Math.atan2(dx * ahead, dz * ahead)], [-1, 0.9, 0, Math.atan2(dx * ahead, dz * ahead)]);
+    tries.push([-1, 0.9, 0], [-1, 2.2, 0]);
+    const candidates = tries.map(([side, inset, along, look]) => {
+      const px = r.x + nx * side * (r.w / 2 + inset) + dx * along, pz = r.z + nz * side * (r.w / 2 + inset) + dz * along;
+      const yaw = look ?? Math.atan2(x - px, z - pz), gy = groundY(px, pz);
+      const see = (d, h) => (rig?.clearance ? rig.clearance(px, gy + 1.6, pz, px + Math.sin(yaw) * d, gy + h, pz + Math.cos(yaw) * d) : 1);
+      // room behind for the camera, and an open view ahead (not a shutter at arm's length)
+      const room = Math.min(see(-4.5, 3), see(6, 1.6));
+      return { px, pz, yaw, room };
+    });
+    const pick = candidates.find((c) => c.room > 0.9) || candidates.reduce((a, b) => (b.room > a.room ? b : a));
+    C.teleport(pick.px, pick.pz, pick.yaw);
   }
 }
 
@@ -268,7 +286,7 @@ export default {
       else if (atlas.isOpen && (e.key === '-' || e.key === '_')) atlas.zoomBy(1 / 1.5);
     });
     syncLabels();
-    window.__harare && (window.__harare.nav = { geo, atlas, setDest, clearDest, teleportTo, get route() { return route; }, get routeLen() { return routeLen; } });
+    window.__harare && (window.__harare.nav = { geo, atlas, setDest, clearDest, teleportTo, get route() { return route; }, get routeLen() { return routeLen; }, addSpot(sp, alias) { geo.addSpot(sp, alias); $('teleport-list').innerHTML = ''; buildTeleportList(); } });
     console.log(`[harare] nav HUD ready in ${(performance.now() - t0).toFixed(0)} ms (${geo.junctions.length} junctions, ${geo.entries.length} searchable names)`);
   },
 

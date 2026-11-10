@@ -252,6 +252,17 @@ export class Controls {
       h.x = x - Math.sin(h.yaw) * 80;
       h.z = z - Math.cos(h.yaw) * 80;
       if (yaw !== undefined) h.yaw = yaw;
+      // Arrive above the rooftops with a clear line to the target, not wherever the last altitude happens to be
+      const clear = (y) => {
+        for (let t = 0; t <= 1; t += 0.125) {
+          const px = h.x + (x - h.x) * t, pz = h.z + (z - h.z) * t;
+          if (this.blocked.circle?.(px, pz, 4, y) || this.blocked(px, pz, y) || this.blocked(px, pz, y - 6)) return false;
+        }
+        return true;
+      };
+      let y = Math.max(h.y, groundY(h.x, h.z) + 20);
+      while (y < 260 && !clear(y)) y += 4;
+      h.y = y; h.vx = h.vy = h.vz = 0; h.landing = null;
       this.writeHeliCamera();
     }
   }
@@ -265,9 +276,17 @@ export class Controls {
   nudgeFree(o) {
     // a walker on a roof is tested at its own height, or it would be shoved off the roof it stands on
     const feet=o===this.walk?Math.max(0,o.y-groundY(o.x,o.z)):0;
-    const hit=(x,z)=>o===this.car?this.carHits(x,z,o.yaw)||!!this.contacts?.carBlocked(x,z,o.yaw,o.len/2,o.width/2,o,false):this.walkHits(x,z,.3,feet,o);
+    // Each candidate is tested as if the body already stood there. Tested from the overlapping spot, the "you may move
+    // away from what you're touching" rule passed any half-metre step, leaving a teleported kombi inside traffic
+    const test=(x,z)=>o===this.car?this.carHits(x,z,o.yaw)||!!this.contacts?.carBlocked(x,z,o.yaw,o.len/2,o.width/2,o,false):this.walkHits(x,z,.3,feet,o);
+    const hit=(x,z)=>{const px=o.x,pz=o.z;o.x=x;o.z=z;const h=test(x,z);o.x=px;o.z=pz;return h;};
     if(!hit(o.x,o.z))return;
     const ox=o.x,oz=o.z;
+    // a car first slides along its lane (ahead of or behind the traffic it landed on) so it stays on the road
+    if(o===this.car)for(let d=2;d<=40;d+=2)for(const s of [1,-1]) {
+      const x=ox+Math.sin(o.yaw)*d*s,z=oz+Math.cos(o.yaw)*d*s;
+      if(!hit(x,z)){o.x=x;o.z=z;return;}
+    }
     for(let r=.5;r<100;r+=.5)for(let k=0;k<16;k++) {
       const x=ox+Math.cos(k*Math.PI/8)*r,z=oz+Math.sin(k*Math.PI/8)*r;
       if(!hit(x,z)){o.x=x;o.z=z;return;}

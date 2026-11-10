@@ -405,11 +405,20 @@ export function createAtlas({ DATA, geo, layers, getPlayer, getHeading, onDest, 
     hideResults();
     q.value = e.kind === 'street' ? shortName(e.n) : e.n;
     q.blur();
-    flyTo(e.x, e.z, Math.max(s, e.kind === 'street' ? 0.7 : 1.1));
+    // close enough to read the streets around it, not so close the pin fills the screen
+    flyTo(e.x, e.z, Math.max(s, e.kind === 'street' ? 0.45 : 0.6));
     setTimeout(() => setDest(e.x, e.z, e.spot ? { name: e.spot.n, sub: e.sub, spot: e.spot } : { name: e.kind === 'street' ? shortName(e.n) : e.n, sub: e.sub }), 0);
   }
+  // An empty search box offers the landmarks, so teleporting never depends on knowing a name
+  const landmarks = () => geo.entries.filter((e) => e.spot);
+  q.addEventListener('focus', () => {
+    if (q.value) return;
+    hits = landmarks();
+    sel = 0;
+    renderResults();
+  });
   q.addEventListener('input', () => {
-    hits = geo.search(q.value, 8);
+    hits = q.value ? geo.search(q.value, 8) : landmarks();
     sel = 0;
     renderResults();
   });

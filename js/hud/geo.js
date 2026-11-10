@@ -441,5 +441,12 @@ export function buildGeo(DATA) {
     return { x: pr.x, z: pr.z, dx, dz, w: e.w || 8, o: e.o };
   }
 
-  return { segs, forSegs, nearestStreet, nearestJunction, junctions, spots, districts, entries, search, route, snapToRoad, project };
+  // Landmarks placed at runtime (the Nehanda statue finds its own corner) join the list and the search
+  function addSpot(sp, alias = '') {
+    const s = { ...sp, street: nearestStreet(sp.x, sp.z, 300) };
+    spots.push(s);
+    entries.unshift({ n: s.n, kind: 'place', x: s.x, z: s.z, sub: s.street ? shortName(s.street) : s.d, spot: s, key: norm(s.n) + ' ' + alias });
+    return s;
+  }
+  return { segs, forSegs, nearestStreet, nearestJunction, junctions, spots, districts, entries, search, route, snapToRoad, project, addSpot };
 }

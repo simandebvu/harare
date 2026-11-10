@@ -48,8 +48,9 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   const NEAR2 = 120 * 120;
   let camX = 0, camZ = 0;
   let mpP=null,mpNear=true;
-  // a walker stuck for a second squeezes between stopped cars rather than pacing in front of a queue that waits for them
-  const mpBlocked=(a,b)=>solid(a,b)||contacts?.personBlocked(a,b,.32,mpP,0,mpNear,!(mpP.squeezeT>0));
+  // A walker stuck for a second squeezes: slim against cars and furniture (it slips through a gap in a queue but never
+  // ends up inside a car body) and shuffles past other walkers, so a narrow pinch can't lock a crowd in place
+  const mpBlocked=(a,b)=>{const sq=mpP.squeezeT>0;return solid(a,b)||!!contacts?.personBlocked(a,b,sq?.1:.32,mpP,0,mpNear,true,!sq);};
   function movePerson(p,x,z) {
     mpP=p;mpNear=(p.x-camX)**2+(p.z-camZ)**2<NEAR2;
     return movePedestrian(p,x,z,mpBlocked);

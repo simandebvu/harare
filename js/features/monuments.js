@@ -191,6 +191,7 @@ export default {
     label.position.set(spot.x, statue.position.y + 7, spot.z);
     ctx.labels?.add(label);
     this.spot = spot;
+    window.__harare?.nav?.addSpot({ n: 'Mbuya Nehanda statue', d: 'CBD', icon: 'civic', x: spot.x, z: spot.z }, 'nehanda monument heroine');
     console.log(`[harare] monuments: Mbuya Nehanda at ${spot.x.toFixed(0)}, ${spot.z.toFixed(0)} (${cleared} trees cleared, placed in ${(performance.now() - t0).toFixed(0)} ms)`);
   },
 };

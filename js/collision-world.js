@@ -60,14 +60,16 @@ export function createCollisionWorld(traffic, people, controls) {
       }
     },
     // withStatics=false skips posts, walls and furniture (far-off pedestrians: nobody can see them clip a bin)
-    personBlocked(x,z,r,owner,feet=0,withStatics=true,withVehicles=true) {
+    personBlocked(x,z,r,owner,feet=0,withStatics=true,withVehicles=true,withPeople=true) {
       if(withStatics&&anyNear(statics,x,z,r,b=>feet<b.height&&circleBox(x,z,r,b)&&!(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6)))return true;
       if(withVehicles&&feet<1.8&&anyNear(vehicles,x,z,r,b=>{
         syncBody(b);
         if(b.owner===owner||!circleBox(x,z,r,b))return false;
-        return !(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6);
+        // Already inside a car body (it drove through you while far from the camera): walk out any way you like.
+        // Only stepping away from the car's centre used to be allowed, which pinned walkers in stopped cars for good
+        return !(owner&&circleBox(owner.x,owner.z,r,b));
       }))return true;
-      return feet<1.6&&anyNear(pedestrians,x,z,r+.24,p=>{
+      return withPeople&&feet<1.6&&anyNear(pedestrians,x,z,r+.24,p=>{
         if(p===owner)return false;
         const d=(x-p.x)**2+(z-p.z)**2;
         return d<(r+.24)**2&&!(owner&&d>(owner.x-p.x)**2+(owner.z-p.z)**2+1e-6);
