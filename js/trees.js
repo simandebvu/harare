@@ -15,7 +15,8 @@ const LOD_MID = 280; // coarse cards and branches within; crown shell beyond
 const HYST = 5;
 const FAR_LOW = 1300; // at street level everything further is behind buildings
 const FAR_HIGH = 4200;
-const SHADOW_R = 850; // shadow stand-ins within this of the camera (the sun's frustum spans ≤ ±700 m)
+// shadow stand-ins within this of the camera: the sun's frustum spans ±130 m on the ground (plus a long low-sun shadow), up to ±700 m in flight
+const SHADOW_R_GROUND = 300, SHADOW_R_AIR = 850;
 
 export function buildTrees(scene, DATA, blocked) {
   const t0 = performance.now();
@@ -269,6 +270,7 @@ export function buildTrees(scene, DATA, blocked) {
   // --- per-tree level of detail and culling ----------------------------------------------------------------------------
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4();
   const last = new THREE.Vector3(Infinity, 0, 0), lastDir = new THREE.Vector3(), camDir = new THREE.Vector3(), lastShadow = new THREE.Vector3(Infinity, 0, 0);
+  let lastShadowR = 0;
   let lastFov = NaN, lastAspect = NaN;
   const fill = new Array(SPECIES.length * VARIANTS * 3).fill(0);
   const gone = new Uint8Array(N); // trees cleared for a plaza (js/features/monuments.js)
@@ -319,9 +321,9 @@ export function buildTrees(scene, DATA, blocked) {
   }
   const pfill = new Array(SPECIES.length * VARIANTS).fill(0);
   const proxies = meshes.flatMap((row) => row.map((x) => x.proxy));
-  function regroupShadows(p) {
+  function regroupShadows(p, R) {
     pfill.fill(0);
-    const R2 = SHADOW_R * SHADOW_R;
+    const R2 = R * R;
     for (let i = 0; i < N; i++) {
       if (gone[i]) continue;
       const dx = cx[i] - p.x, dz = cz[i] - p.z;
@@ -413,9 +415,11 @@ export function buildTrees(scene, DATA, blocked) {
         lastAspect = camera.aspect;
         regroup(camera);
       }
-      if (camera.position.distanceToSquared(lastShadow) > 625) {
+      const shadowR = camera.position.y - groundY(camera.position.x, camera.position.z) > 60 ? SHADOW_R_AIR : SHADOW_R_GROUND;
+      if (shadowR !== lastShadowR || camera.position.distanceToSquared(lastShadow) > 625) {
         lastShadow.copy(camera.position);
-        regroupShadows(camera.position);
+        lastShadowR = shadowR;
+        regroupShadows(camera.position, shadowR);
       }
     },
   };

@@ -27,7 +27,7 @@ const step = (msg) => {
 
 async function init() {
   const app = document.getElementById('app');
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); // MSAA lives in the composer target
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' }); // MSAA lives in the composer target; a multisampled canvas would only resolve the FXAA pass again
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;

@@ -692,6 +692,17 @@ export function buildBuildings(scene, DATA, renderer) {
     return top;
   };
 
+  // Footprints in the grid cells around (x, z), each once: a stamp per footprint instead of a Set and a fresh array per call
+  const seen=[],near=[];let qStamp=0;
+  const nearby=(x,z,r)=>{
+    near.length=0;qStamp++;
+    const c=grid.cell;
+    for(let i=Math.floor((x-r)/c);i<=Math.floor((x+r)/c);i++)for(let j=Math.floor((z-r)/c);j<=Math.floor((z+r)/c);j++){
+      const b=grid.map.get(grid.key(i,j));
+      if(b)for(const it of b)if(seen[it]!==qStamp){seen[it]=qStamp;near.push(it);}
+    }
+    return near;
+  };
   // Cache provably clear half-metre cells. Near a wall we still test the exact circle.
   const clearCells=new Map();
   blocked.circle = (x, z, radius, y = 0) => {
@@ -706,7 +717,7 @@ export function buildBuildings(scene, DATA, renderer) {
       }
       if(clear)return false;
     }
-    for (const i of new Set(grid.queryRadius(x,z,radius))) {
+    for (const i of nearby(x,z,radius)) {
       const fp=footprints[i];
       if(x+radius>=fp.bounds[0]&&x-radius<=fp.bounds[2]&&z+radius>=fp.bounds[1]&&z-radius<=fp.bounds[3]&&y <= fp.h && circlePolygon(x,z,radius,fp.p)) return true;
     }
@@ -714,7 +725,7 @@ export function buildBuildings(scene, DATA, renderer) {
   };
   blocked.box = (x,z,yaw,hl,hw,y=0) => {
     const p=boxPolygon(x,z,yaw,hl,hw),bounds=polyBounds(p);
-    for (const i of new Set(grid.queryRadius(x,z,Math.hypot(hl,hw)))) {
+    for (const i of nearby(x,z,Math.hypot(hl,hw))) {
       const fp=footprints[i];
       if(bounds[2]>=fp.bounds[0]&&bounds[0]<=fp.bounds[2]&&bounds[3]>=fp.bounds[1]&&bounds[1]<=fp.bounds[3]&&y <= fp.h && polygonsOverlap(p,fp.p)) return true;
     }

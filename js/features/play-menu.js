@@ -55,7 +55,7 @@ export default {
 .welcome button.primary{background:#f5d453;color:#18201c;border-color:#f5d453}.welcome button:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .welcome .keys{margin:16px 0 0;font-size:12px;color:#8fa59b}
 .look-hint{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:9;padding:12px 20px;border-radius:999px;background:#0d1513cc;color:#fff;font:600 15px system-ui;pointer-events:none;box-shadow:0 8px 30px #0006;animation:look-pulse 2.4s ease-in-out infinite}
-.look-hint[hidden],.welcome[hidden]{display:none}body.ui-hidden .look-hint{display:none}
+.look-hint[hidden],.welcome[hidden]{display:none}body.ui-hidden .look-hint,body.ui-hidden .shift-launch,body.ui-hidden .supply-launch{display:none}
 @keyframes look-pulse{50%{opacity:.72}}@media(prefers-reduced-motion:reduce){.look-hint{animation:none}}`;
   document.head.appendChild(style);
   const touch=matchMedia('(pointer: coarse)').matches;
