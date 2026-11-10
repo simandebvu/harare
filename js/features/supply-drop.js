@@ -78,6 +78,10 @@ export default {
   if(s.status==='pickup')this.package.position.set(this.pickup.x,this.pickup.y+.4,this.pickup.z);
   else if(s.status==='carrying'){const yaw=p.yaw||0;this.package.position.set(p.x+Math.cos(yaw)*.55,(p.y??groundY(p.x,p.z))+.65,p.z-Math.sin(yaw)*.55);this.package.rotation.y=yaw;}
   else if(s.parcel)this.package.position.set(s.parcel.x,s.parcel.y,s.parcel.z);
+  // Over the deck the ring is under the hero: tip the chase camera down so the drop can be aimed by eye
+  const near=Math.hypot(p.x-this.target.x,p.z-this.target.z),above=(p.y||0)-this.target.y;
+  c.viewDip=c.mode==='fly'&&((s.status==='carrying'&&near<35&&above>-2&&above<30)||s.status==='falling')?.85:0;
+  if(s.status!==this.lastStatus){if(['complete','missed'].includes(s.status))window.__harare.nav?.clearDest();this.lastStatus=s.status;}
   this.refresh=(this.refresh||0)-dt;if(this.refresh<=0){this.refresh=.12;this.render();}
  }
 };

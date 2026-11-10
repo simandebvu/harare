@@ -133,7 +133,16 @@ export function buildTrees(scene, DATA, blocked) {
         )
         .replace(
           '#include <alphatest_fragment>',
-          `#if defined(USE_ALPHATEST) && defined(ALPHA_TO_COVERAGE)
+          `#ifdef TREE_LEAF
+            // Leaves right at the lens dissolve (screen-door) so a camera pushed into a crown still shows the hero
+            float camD = length(vViewPosition);
+            if (camD < 4.0) {
+              const float B[16] = float[16](0., 8., 2., 10., 12., 4., 14., 6., 3., 11., 1., 9., 15., 7., 13., 5.);
+              ivec2 q = ivec2(mod(gl_FragCoord.xy, 4.0));
+              if ((B[q.x + q.y * 4] + 0.5) / 16.0 > (camD - 1.5) / 2.5) discard;
+            }
+          #endif
+          #if defined(USE_ALPHATEST) && defined(ALPHA_TO_COVERAGE)
             // sharpened alpha for alpha-to-coverage: crisp at any distance, antialiased by the MSAA samples
             diffuseColor.a = saturate((diffuseColor.a - alphaTest) / max(fwidth(diffuseColor.a), 0.0001) + 0.5);
             if (diffuseColor.a < 0.02) discard;

@@ -89,7 +89,8 @@ function computeRoute() {
   const n = document.createElement('span');
   n.textContent = dest.name;
   const b = document.createElement('b');
-  b.textContent = fmtDist(routeLen || Math.hypot(dest.x - p.x, dest.z - p.z));
+  // Flying ignores roads, so the straight-line distance is the honest one
+  b.textContent = fmtDist(mode === 'fly' || !routeLen ? Math.hypot(dest.x - p.x, dest.z - p.z) : routeLen);
   chip.append(ic, n, b);
   chip.lastChild.dataset.d = '1';
 }
@@ -267,7 +268,7 @@ export default {
       else if (atlas.isOpen && (e.key === '-' || e.key === '_')) atlas.zoomBy(1 / 1.5);
     });
     syncLabels();
-    window.__harare && (window.__harare.nav = { geo, atlas, setDest, clearDest, teleportTo, get route() { return route; } });
+    window.__harare && (window.__harare.nav = { geo, atlas, setDest, clearDest, teleportTo, get route() { return route; }, get routeLen() { return routeLen; } });
     console.log(`[harare] nav HUD ready in ${(performance.now() - t0).toFixed(0)} ms (${geo.junctions.length} junctions, ${geo.entries.length} searchable names)`);
   },
 
@@ -301,6 +302,7 @@ export default {
         toast(`You have arrived at ${dest.name}`);
         clearDest();
       } else if (Math.hypot(p.x - routeFrom.x, p.z - routeFrom.z) > 6 || mode !== routeFrom.mode) computeRoute();
+      else if (mode === 'fly') { const b = $('gps-chip').querySelector('b'); if (b) b.textContent = fmtDist(dd); }
     }
 
     if ((signT -= dt) <= 0) {

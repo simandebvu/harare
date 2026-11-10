@@ -37,12 +37,19 @@ export default {
     ctx.shift=this;this.render();
   },
   route(){const p=this.stops[this.state.target];window.__harare.nav?.setDest(p.x,p.z,p.name+' · kombi stop');this.marker.position.set(p.x,groundY(p.x,p.z)+.35,p.z);this.marker.visible=true;},
-  start(){if(this.ctx.controls.car.alt>.01)return;this.state.start(this.ctx.controls.vehicleType);this.ctx.setMode('drive');this.last={x:this.ctx.controls.car.x,z:this.ctx.controls.car.z};this.message='Follow the GPS to the yellow stop ring.';this.route();this.render();},
+  start(){if(this.ctx.controls.car.alt>.01)return;this.state.start(this.ctx.controls.vehicleType);this.ctx.setMode('drive');this.route();this.faceRoute();this.last={x:this.ctx.controls.car.x,z:this.ctx.controls.car.z};this.message='Follow the GPS to the yellow stop ring.';const st=this.stops[this.state.target];this.distance=Math.hypot(this.last.x-st.x,this.last.z-st.z);this.render();},
+  // A shift should not open with a three-point turn: if the GPS leads away behind the kombi, put it in the lane that heads that way
+  faceRoute(){const C=this.ctx.controls,c=C.car,pts=window.__harare.nav?.route;if(!pts||pts.length<4)return;
+    let i=2,tx=pts[2],tz=pts[3];for(;i<pts.length;i+=2){tx=pts[i];tz=pts[i+1];if(Math.hypot(tx-c.x,tz-c.z)>12)break;}
+    const yaw=Math.atan2(tx-c.x,tz-c.z);if(Math.cos(yaw-c.yaw)>0)return;
+    C.placeCarOnRoad(c.x,c.z,yaw);if(Math.cos(yaw-c.yaw)<=0)return;C.rig.yaw=c.yaw;C.rig.orbitYaw=0;this.route();},
   complete(){this.marker.visible=false;window.__harare.nav?.clearDest();this.ctx.controls.car.v=this.ctx.controls.car.vx=this.ctx.controls.car.vz=0;this.render();},
+  // Same figure as the GPS chip: the road distance, not the straight line
+  roadDistance(){const d=this.distance||0,r=window.__harare.nav?.routeLen,m=d>22&&r?Math.max(d,r):d;return m<950?Math.round(m/10)*10+' m':(m/1000).toFixed(1)+' km';},
   render(){
     const s=this.state,active=s.status==='active',done=s.status==='finished',q=sel=>this.ui.querySelector(sel),money=n=>'$'+n.toFixed(2);
     q('h2').textContent=active?(s.onboard?'Take your passengers to '+this.stops[s.target].name:'Pick up at '+this.stops[s.target].name):done?s.reason:'Make your first takings.';
-    q('.shift-copy').textContent=active?`${Math.ceil(this.distance||0)} m to stop · ${s.onboard}/${s.capacity} passengers` :done?`${s.delivered} passengers delivered · ${s.trips} ${s.trips===1?'trip':'trips'}. ${s.profit>0?'You covered the shift costs.':'Try another shift to cover your costs.'}`:'Fourth Street ↔ Charge Office. Stop in the yellow ring for four seconds to board or drop off. Earn $24 in fares before the ten-minute shift ends.';
+    q('.shift-copy').textContent=active?`${this.roadDistance()} to stop · ${s.onboard}/${s.capacity} passengers` :done?`${s.delivered} passengers delivered · ${s.trips} ${s.trips===1?'trip':'trips'}. ${s.profit>0?'You covered the shift costs.':'Try another shift to cover your costs.'}`:'Fourth Street ↔ Charge Office. Stop in the yellow ring for four seconds to board or drop off. Earn $24 in fares before the ten-minute shift ends.';
     q('.shift-stats').innerHTML=active?`<span><b>${Math.floor(s.remaining/60)}:${String(Math.floor(s.remaining%60)).padStart(2,'0')}</b> time left</span><span><b>${money(s.cash)}</b> / $24 fares</span><span><b>${Math.ceil(s.fuel)}%</b> ${s.vehicle==='roadster'?'battery':'fuel'}</span><span><b>${Math.round(s.comfort)}%</b> comfort</span>`:done?`<span><b>${money(s.cash)}</b> fares</span><span><b>${money(8+s.repairs+(100-s.fuel)*.04)}</b> costs</span><span><b>${money(s.profit)}</b> take-home</span>`:'';
     q('.shift-hint').textContent=active?(this.ctx.controls.mode!=='drive'?'Shift paused — return to Drive mode to continue.':carAirborne(this.ctx)?'Land on clear road before serving passengers.':this.distance<16?(this.ctx.controls.speed>.6?'Brake to a full stop to serve passengers.':`${s.onboard?'Dropping off':'Boarding'}… ${Math.max(0,Math.ceil(4-s.dwell))}s`):this.message):done?'Costs include $8 owner’s takings, fuel used and $1 per collision.':'Smooth driving earns a $2 tip per trip. Crashes cost money. Walking pauses the shift; fast travel ends it. Fares are game values.';
     q('.shift-progress').hidden=!active||!s.dwell;q('.shift-progress span').style.width=(s.dwell/4*100)+'%';

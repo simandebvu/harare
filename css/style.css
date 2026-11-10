@@ -191,6 +191,7 @@ body.ui-hidden #credit { opacity: 0.5; }
   padding: 5px 9px; border-radius: 10px; background: rgba(12, 13, 16, 0.86); font-size: 11.5px; font-weight: 600;
   white-space: nowrap; overflow: hidden;
 }
+.gps-chip[hidden] { display: none; }
 .gps-chip b { color: var(--gold); font-variant-numeric: tabular-nums; margin-left: auto; padding-left: 6px; }
 .gps-chip span { overflow: hidden; text-overflow: ellipsis; }
 .gps-chip .icon { width: 14px; height: 14px; color: var(--gold); }

@@ -222,7 +222,7 @@ async function init() {
   const help = document.getElementById('help');
   const HELP = {
     fly: 'Look up or down and hold W to climb or dive · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
-    walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · R enter taxi · V camera',
+    walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · R fly or enter taxi · V camera',
     drive: 'Click the city to look around · W/S gas & reverse · A/D steer · Space brake · R get out · keep left!',
   };
   const buttons = [...document.querySelectorAll('.modes button')];

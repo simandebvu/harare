@@ -40,7 +40,7 @@ export default {
   // Start with the world visible. The shift introduction remains one click away.
   const dismiss=document.querySelector('.shift-dismiss');dismiss?.click();
   this.welcome(ctx);
-  document.querySelector('.shift-launch').textContent='Start taxi mission';
+  document.querySelector('.shift-launch').textContent='Kombi shift · taxi mission';
   ctx.setMode('walk');
   this.ctx=ctx;this.update();
  },
@@ -54,8 +54,8 @@ export default {
 .welcome .ways{display:grid;gap:9px}.welcome button{padding:12px;border-radius:10px;border:1px solid #ffffff38;background:#273d36;color:#fff;font:600 14px system-ui;cursor:pointer}
 .welcome button.primary{background:#f5d453;color:#18201c;border-color:#f5d453}.welcome button:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .welcome .keys{margin:16px 0 0;font-size:12px;color:#8fa59b}
-.look-hint{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:9;padding:12px 20px;border-radius:999px;background:#0d1513cc;color:#fff;font:600 15px system-ui;pointer-events:none;box-shadow:0 8px 30px #0006;animation:look-pulse 2.4s ease-in-out infinite}
-.look-hint[hidden],.welcome[hidden]{display:none}body.ui-hidden .look-hint,body.ui-hidden .shift-launch,body.ui-hidden .supply-launch{display:none}
+.look-hint{position:fixed;left:50%;top:22%;transform:translate(-50%,-50%);z-index:9;padding:12px 20px;border-radius:999px;background:#0d1513cc;color:#fff;font:600 15px system-ui;pointer-events:none;box-shadow:0 8px 30px #0006;animation:look-pulse 2.4s ease-in-out infinite}
+.look-hint[hidden],.welcome[hidden]{display:none}body.ui-hidden .look-hint,body.ui-hidden .shift-launch,body.ui-hidden .supply-launch{display:none}body.welcoming .shift-launch,body.welcoming .supply-launch,body.welcoming .supply-action{display:none}
 @keyframes look-pulse{50%{opacity:.72}}@media(prefers-reduced-motion:reduce){.look-hint{animation:none}}`;
   document.head.appendChild(style);
   const touch=matchMedia('(pointer: coarse)').matches;
@@ -71,9 +71,9 @@ export default {
   if(seen)return showHint();
   const card=document.createElement('section');card.className='welcome';card.setAttribute('role','dialog');card.setAttribute('aria-labelledby','welcome-title');
   card.innerHTML=`<small>HARARE CBD · BUILT FROM OPENSTREETMAP</small><h2 id="welcome-title">Welcome to the Sunshine City</h2><p>Walk the streets, drive a kombi through them, or fly over the rooftops.</p><div class="ways"><button type="button" class="primary" data-go="explore">Just explore</button><button type="button" data-go="shift">Drive a kombi shift</button><button type="button" data-go="supply">Fly a supply drop</button></div><p class="keys">${touch?'Stick to move · drag to look · Fly / Walk / Drive buttons below':'WASD move · click the city to look around · 1 / 2 / 3 fly, walk, drive'}</p>`;
-  document.body.appendChild(card);
+  document.body.appendChild(card);document.body.classList.add('welcoming');
   const close=(go)=>{
-   if(card.hidden)return;card.hidden=true;try{localStorage.setItem('harare-welcomed','1');}catch{}
+   if(card.hidden)return;card.hidden=true;document.body.classList.remove('welcoming');try{localStorage.setItem('harare-welcomed','1');}catch{}
    removeEventListener('keydown',onKey,true);
    if(go==='shift')document.querySelector('.shift-launch')?.click();
    else if(go==='supply')document.querySelector('.supply-launch')?.click();

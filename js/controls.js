@@ -222,6 +222,8 @@ export class Controls {
       this.map.update();
     }
     this.kombi.visible = this.driven;
+    // The parked kombi's transform is only written while driving; a mode switch before its first drive frame left it at the origin
+    if (this.driven) { const c = this.car; this.kombi.position.set(c.x, groundY(c.x, c.z) + 0.22 + (c.alt||0), c.z); this.kombi.rotation.set(0, c.yaw, 0); }
     this.settingMode = true;
     this.rig.setKind(mode);
     this.settingMode = false;
@@ -506,8 +508,11 @@ export class Controls {
     }
     if (still) return;
     const speed=Math.hypot(h.vx,h.vz),distance=6+Math.min(2,speed*.035);
+    // Missions can ask the camera (not the flight path) to look further down, e.g. at a drop target below the hero
+    this.viewDipNow=(this.viewDipNow||0)+((this.viewDip||0)-(this.viewDipNow||0))*(1-Math.exp(-dt*3));
+    const vp=THREE.MathUtils.clamp(h.pitch-this.viewDipNow,-1.35,.9);
     // A damped chase camera eases through turns; pitch drag now changes the view.
-    _v.set(h.x-fx*distance,h.y+2.2-Math.sin(h.pitch)*distance*.65,h.z-fz*distance);
+    _v.set(h.x-fx*distance,h.y+2.2-Math.sin(vp)*distance*.65,h.z-fz*distance);
     // Keep the chase camera out of buildings and above the ground, the same way the walk/drive rig does
     const hx=h.x,hy=h.y+1,hz=h.z,camFloor=(x,z)=>groundY(x,z)+.4;
     let f=this.rig.clearance(hx,hy,hz,_v.x,_v.y,_v.z);
@@ -528,7 +533,7 @@ export class Controls {
     c.position.y=Math.max(c.position.y,camFloor(c.position.x,c.position.z));
     this.rig.setNear(THREE.MathUtils.clamp((Math.hypot(c.position.x-hx,c.position.y-hy,c.position.z-hz)-.6)*.6,.06,1));
     if(h.phase==='impact')c.position.y+=Math.sin(h.phaseTime*55)*.065*Math.exp(-h.phaseTime*7);
-    c.lookAt(h.x+fx*2,h.y+1+Math.sin(h.pitch)*2,h.z+fz*2);
+    c.lookAt(h.x+fx*2,h.y+1+Math.sin(vp)*2,h.z+fz*2);
     this.rig.setFov(60 + Math.min(12, Math.hypot(h.vx, h.vz) * 0.12), dt);
     this.camWritten.copy(c.position);
   }
