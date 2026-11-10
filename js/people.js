@@ -48,7 +48,8 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   const NEAR2 = 120 * 120;
   let camX = 0, camZ = 0;
   let mpP=null,mpNear=true;
-  const mpBlocked=(a,b)=>solid(a,b)||contacts?.personBlocked(a,b,.32,mpP,0,mpNear);
+  // a walker stuck for a second squeezes between stopped cars rather than pacing in front of a queue that waits for them
+  const mpBlocked=(a,b)=>solid(a,b)||contacts?.personBlocked(a,b,.32,mpP,0,mpNear,!(mpP.squeezeT>0));
   function movePerson(p,x,z) {
     mpP=p;mpNear=(p.x-camX)**2+(p.z-camZ)**2<NEAR2;
     return movePedestrian(p,x,z,mpBlocked);
@@ -389,7 +390,9 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       const dx=tx-p.x,dz=tz-p.z,distance=Math.hypot(dx,dz);
       const step=Math.min(distance*k,p.v*dt);
       const moved=movePerson(p,p.x+(distance?dx/distance*step:0),p.z+(distance?dz/distance*step:0));
+      if(p.squeezeT!==undefined)p.squeezeT-=dt; // counts on below zero: a 3 s pause before the next squeeze
       if(!moved){p.e=oE;p.d=oD;p.dir=oDir;go=0;p.stuck=(p.stuck||0)+dt;
+        if(p.stuck>1&&!(p.squeezeT>-3))p.squeezeT=1.5;
         if(p.stuck>1.2&&solid(tx,tz)||p.stuck>3){p.dir*=-1;p.stuck=0;} // a wall, or a car or crowd that won't clear
       }else p.stuck=0;
       p.actualSpeed=Math.min(p.v,Math.hypot(p.x-oldX,p.z-oldZ)/Math.max(dt,.001));

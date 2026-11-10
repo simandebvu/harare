@@ -18,8 +18,7 @@ const SPEED = { trunk: 16, primary: 14, secondary: 13, tertiary: 11, residential
 const RANK = { trunk: 6, primary: 5, secondary: 4, tertiary: 3, residential: 2, unclassified: 2 };
 const CYCLE = 40; // s: EW green 17, amber 3, NS green 17, amber 3
 const ROAD_Y = 0.22; // asphalt surface above groundY
-const FORCE_AFTER = 7; // s waiting at a free-for-all junction before pushing through anyway
-const STALE_AFTER = 14; // s a reservation may stand before it's treated as abandoned
+const UNWEDGE_AFTER = 8; // s a car may stand still inside a junction box, blocking others, before it eases through
 
 export function createTraffic(scene, DATA, count = 650) {
   const r = rng(99);
@@ -84,6 +83,17 @@ export function createTraffic(scene, DATA, count = 650) {
     const w = Math.max(...touching.map((e) => e.w));
     lights.set(n, { offset: r() * CYCLE, x, z, w });
   }
+  // Robots a few metres apart (the two halves of a dual carriageway crossing) change together, so a car let through
+  // one isn't stopped by the other while still in the first box
+  {
+    const root = new Map(), find = (n) => { while (root.get(n) !== n) n = root.get(n); return n; };
+    for (const n of lights.keys()) root.set(n, n);
+    for (const e of edges) {
+      const A = lights.get(e.a), B = lights.get(e.b);
+      if (A && B && e.L < A.w / 2 + B.w / 2 + 15) root.set(find(e.a), find(e.b));
+    }
+    for (const [n, L] of lights) L.offset = lights.get(find(n)).offset;
+  }
   const phaseOf = (L, t) => ((t + L.offset) % CYCLE + CYCLE) % CYCLE;
   const axisPhase = (L, axis, t) => {
     const ph = phaseOf(L, t);
@@ -100,10 +110,25 @@ export function createTraffic(scene, DATA, count = 650) {
   const isJn = new Uint8Array(nodeCount);
   const jRad = new Float32Array(nodeCount); // half-size of the junction box
   for (const [n, deg] of degree) if (deg >= 3) (isJn[n] = 1), (jRad[n] = lights.get(n)?.w / 2 || maxW[n] / 2);
-  const jOcc = new Int16Array(nodeCount); // cars inside (or committed)
-  const jDx = new Float32Array(nodeCount), jDz = new Float32Array(nodeCount); // approach direction of the occupants
-  const jSince = new Float32Array(nodeCount); // when the current occupancy began
-  const jStarve = new Float32Array(nodeCount).fill(-1e9); // last time a car had been kept waiting > 3 s
+  // Each junction keeps the movements committed through it (approach, exit, turn), and a car may only commit when its
+  // movement crosses none of them. Driving on the left, a left turn hugs the kerb and only meets traffic bound for the
+  // same exit; a right turn cuts across oncoming traffic; crossing streams always meet.
+  // Junctions too close together for a car to wait between them (dual carriageways, staggered crossings) are one box:
+  // a car commits to the whole cluster or waits outside it, so two cars can't each hold one half waiting for the other
+  const jc = new Int32Array(nodeCount).map((_, n) => n), jBig = new Uint8Array(nodeCount);
+  {
+    const find = (n) => { while (jc[n] !== n) n = jc[n] = jc[jc[n]]; return n; };
+    for (const e of edges) if (isJn[e.a] && isJn[e.b] && e.a !== e.b && e.L < jRad[e.a] + jRad[e.b] + 10) {
+      const A = find(e.a), B = find(e.b);
+      if (A !== B) jc[A] = B;
+    }
+    for (let n = 0; n < nodeCount; n++) if (isJn[n]) jc[n] = find(n);
+    for (let n = 0; n < nodeCount; n++) if (isJn[n] && jc[n] !== n) jBig[jc[n]] = 1;
+  }
+  const jCars = Array.from({ length: nodeCount }, (_, n) => (isJn[n] && jc[n] === n ? [] : null));
+  // the longest-waiting car held back by an occupant, per junction (last frame's, and this frame's being collected)
+  let jWait = new Array(nodeCount).fill(null), jWaitNext = new Array(nodeCount).fill(null);
+  const jamStats = { entries: 0, unwedged: 0, ghosts: 0 };
 
   // --- vehicles ----------------------------------------------------------------------------------------------------
   const typeNames = Object.keys(VEHICLE_TYPES);
@@ -153,7 +178,7 @@ export function createTraffic(scene, DATA, count = 650) {
     const car = {
       type, len: T.len, width:T.width, e, dir, s: r() * E.L, lane: Math.floor(r() * E.lanesDir), v: 0, wait: 0,
       drive: (0.85 + r() * 0.3) * T.maxV, kombi: !!T.kombi, x: 0, z: 0, h: 0, init: false, color: T.colors[Math.floor(r() * T.colors.length)],
-      jn: -1, hold: 0, ax: 0, az: 0, bi: 0, bucket: null,
+      jn: -1, mvJ: -1, ax: 0, az: 0, bx: 0, bz: 0, mvTurn: 0, inK: 0, outK: 0, reqN: -1, reqT: 0, stopT: 0, bi: 0, bucket: null,
       turn: 0, ind: 0, indT: 0, brake: 0, lightsAt: 0.12 + r() * 0.3, cab: T.kombi && r() < 0.7 ? 1 : type === 'zupco' ? 1 : 0, ri: 0,
     };
     car.next = chooseNext(car);
@@ -223,27 +248,54 @@ export function createTraffic(scene, DATA, count = 650) {
   function release(car) {
     const n = car.jn;
     if (n < 0) return;
-    if (jOcc[n] > 0) jOcc[n]--;
+    const L = jCars[n], i = L.indexOf(car);
+    if (i >= 0) (L[i] = L[L.length - 1]), L.pop();
     car.jn = -1;
   }
   function reserve(car, n) {
     release(car);
-    if (jOcc[n] === 0) (jDx[n] = car.ax), (jDz[n] = car.az), (jSince[n] = time);
-    jOcc[n]++;
+    jCars[n].push(car);
     car.jn = n;
-    car.hold = 0;
+    car.reqN = -1;
+    jamStats.entries++;
   }
-  // May this car enter junction n now?
+  // The movement this car would make through the junction at the end of its edge: approach and exit headings, turn
+  const keyOf = (e, dir) => e * 2 + (dir > 0 ? 1 : 0);
+  function planMove(car, J) {
+    car.mvJ = J;
+    const E = edges[car.e], N = edges[car.next.e];
+    sample(car.e, car.dir, Math.max(0, E.L - 1), tmpS);
+    car.ax = tmpS.tx; car.az = tmpS.tz;
+    sample(car.next.e, car.next.dir, Math.min(2, N.L), tmpS);
+    car.bx = tmpS.tx; car.bz = tmpS.tz;
+    const straight = car.ax * car.bx + car.az * car.bz;
+    car.mvTurn = straight < -0.7 ? 2 : straight > 0.8 ? 0 : car.ax * car.bz - car.az * car.bx < 0 ? -1 : 1; // 2 = U-turn
+    car.inK = keyOf(car.e, car.dir);
+    car.outK = keyOf(car.next.e, car.next.dir);
+  }
+  function conflict(a, b) {
+    if (a.inK === b.inK) return false; // one queue: following distance handles it
+    // through a cluster the first node's turn says little about the path: share it only with traffic heading our way
+    if (jBig[a.mvJ]) return a.ax * b.ax + a.az * b.az < 0.75;
+    if (a.outK === b.outK) return true; // merging into the same exit
+    if (a.mvTurn === 2 || b.mvTurn === 2) return true;
+    if (a.mvTurn === -1 || b.mvTurn === -1) return false; // kerb-side left turns stay out of everyone else's way
+    const d = a.ax * b.ax + a.az * b.az;
+    if (d > 0.75) return false; // side by side from the same direction
+    if (d < -0.75) return a.mvTurn !== 0 || b.mvTurn !== 0; // a right turn across oncoming traffic
+    return true; // crossing streams
+  }
+  // 0 = go, 1 = a committed movement crosses ours, 2 = someone who has waited longer goes first
   function canEnter(car, n) {
-    if (jOcc[n] === 0) return true;
-    if (time - jSince[n] > STALE_AFTER) {
-      jOcc[n] = 0; // a reservation left behind by a car that got stuck or warped
-      return true;
+    for (const o of jCars[n]) {
+      if (o === car || !conflict(o, car)) continue;
+      // the car in the way has been standing in the box a long time (wedged against something): let it ease out
+      if (o.stopT > UNWEDGE_AFTER && !(o.ghostT > 0)) (o.ghostT = 2), jamStats.unwedged++;
+      return 1;
     }
-    const parallel = Math.abs(car.ax * jDx[n] + car.az * jDz[n]) > 0.75;
-    if (!parallel) return false;
-    // don't let a steady stream starve someone who's been waiting across it
-    return car.hold > 3 || time - jStarve[n] > 0.5;
+    const W = jWait[n];
+    if (W && W !== car && W.reqN === n && W.jn !== n && time - W.reqT > 1.5 && W.reqT < car.reqT && conflict(W, car)) return 2;
+    return 0;
   }
 
   const FAR_SWEEP2 = 180 * 180; // beyond this from the camera, cars skip collision sweeps
@@ -252,6 +304,8 @@ export function createTraffic(scene, DATA, count = 650) {
     time += dt;
     STREET.time = time;
 
+    [jWait, jWaitNext] = [jWaitNext, jWait];
+    jWaitNext.fill(null);
     for (const b of buckets.values()) b.length = 0;
     for (const car of cars) {
       const k = car.e * 2 + (car.dir > 0 ? 1 : 0);
@@ -270,22 +324,25 @@ export function createTraffic(scene, DATA, count = 650) {
       const oE=car.e,oDir=car.dir,oS=car.s,oLane=car.lane,oNext=car.next;
       const remaining = E.L - car.s;
       let gap = 1e9;
+      car.why = '';
       // Leader in the same lane on this edge
       const b = car.bucket;
       for (let i = car.bi + 1; i < b.length; i++)
         if (b[i].lane === car.lane || E.lanesDir === 1) {
           gap = b[i].s - car.s - (b[i].len + car.len) / 2;
+          car.why = 'lead';
           break;
         }
       // ... or the last car on the edge we're turning into
       let exitRoom = 1e9;
       const nb = buckets.get(car.next.e * 2 + (car.next.dir > 0 ? 1 : 0));
       if (nb?.length) exitRoom = nb[0].s - nb[0].len / 2;
-      if (gap > remaining && nb?.length) gap = Math.min(gap, remaining + exitRoom - car.len / 2);
+      if (gap > remaining && nb?.length && remaining + exitRoom - car.len / 2 < gap) (gap = remaining + exitRoom - car.len / 2), (car.why = 'exit');
 
       // Junction ahead: robots, then the reservation
       const node = endNode(car.e, car.dir);
-      if (isJn[node] && car.jn !== node) {
+      const J = jc[node];
+      if (isJn[node] && car.jn !== J) {
         const front = remaining - car.len / 2; // distance from our bumper to the node
         const stopAt = jRad[node] + 2.5; // stop line
         const toLine = front - stopAt;
@@ -299,18 +356,20 @@ export function createTraffic(scene, DATA, count = 650) {
           }
           const brake = (car.v * car.v) / 12 + 2;
           if (held) {
-            gap = Math.min(gap, toLine + 2.5);
-            car.hold = 0;
+            if (toLine + 2.5 < gap) (gap = toLine + 2.5), (car.why = 'red');
+            car.reqN = -1;
           } else if (toLine < brake) {
-            sample(car.e, car.dir, Math.max(0, E.L - 1), tmpS);
-            car.ax = tmpS.tx;
-            car.az = tmpS.tz;
-            const exitClear = exitRoom > jRad[node] + car.len + 1;
-            if ((exitClear && canEnter(car, node)) || car.hold > FORCE_AFTER) reserve(car, node);
+            planMove(car, J);
+            if (car.reqN !== J) (car.reqN = J), (car.reqT = time);
+            // room past the junction for every car already committed to the same exit, as well as us
+            let demand = 0;
+            for (const o of jCars[J]) if (o !== car && o.outK === car.outK) demand += o.len + 2;
+            const res = canEnter(car, J);
+            if (!res && exitRoom - demand > jRad[node] + car.len + 1) reserve(car, J);
             else {
-              gap = Math.min(gap, toLine + 2.5);
-              if (car.v < 0.5) car.hold += dt;
-              if (car.hold > 3) jStarve[node] = time;
+              if (toLine + 2.5 < gap) (gap = toLine + 2.5), (car.why = res === 1 ? 'cross' : res === 2 ? 'turn' : 'full');
+              // only cars kept out by a crossing movement queue for priority
+              if (res === 1) { const W = jWaitNext[J]; if (!W || car.reqT < W.reqT) jWaitNext[J] = car; }
             }
           }
         }
@@ -326,8 +385,12 @@ export function createTraffic(scene, DATA, count = 650) {
         const g=contacts.trafficGap(car,look)+1.8;
         // the player's abandoned kombi blocking the lane: wait a moment, then edge round it (it's ignored for 2 s)
         car.parkedT=car.heldByParked&&car.v<.5?(car.parkedT||0)+dt:0;
-        if(car.parkedT>4){car.parkedT=0;car.ghostT=2;}
-        if(!(car.ghostT>0))gap=Math.min(gap,g);
+        if(car.parkedT>4){car.parkedT=0;car.ghostT=2;jamStats.ghosts++;}
+        // someone standing near our path (a walker pacing at the kerb of a turn): after a while, creep on; the sweep still
+        // stops us dead rather than touch anyone
+        car.pedT=car.heldByPed&&car.v<.5?(car.pedT||0)+dt:0;
+        if(car.pedT>6){car.pedT=0;car.ghostT=2;jamStats.ghosts++;}
+        if(!(car.ghostT>0)&&g<gap)gap=g,car.why='phys';
       }
       const target = Math.min(E.vmax * car.drive, Math.max(0, (gap - 2.5) * 0.9));
       const dv = Math.max(-9 * dt, Math.min(2.8 * dt, target - car.v));
@@ -342,20 +405,13 @@ export function createTraffic(scene, DATA, count = 650) {
         const nxt = car.next;
         // crossed a junction without a reservation (spawned inside, or a dead-end U-turn): count us in anyway
         const passed = endNode(car.e, car.dir);
-        if (isJn[passed] && car.jn !== passed) reserve(car, passed);
+        if (isJn[passed] && car.jn !== jc[passed]) planMove(car, jc[passed]), reserve(car, jc[passed]);
         car.e = nxt.e;
         car.dir = nxt.dir;
         car.lane = Math.min(car.lane, edges[car.e].lanesDir - 1);
         if (r() < 0.2) car.lane = Math.floor(r() * edges[car.e].lanesDir);
         if (car.ind === -1 || car.ind === 1) car.indT = 1.8; // keep blinking through the turn
         car.next = chooseNext(car);
-      }
-      // Leave the junction box once our tail is clear of it
-      if (car.jn >= 0) {
-        const n = car.jn;
-        if (startNode(car.e, car.dir) === n) {
-          if (car.s - car.len / 2 > jRad[n] + 0.5 || car.s > edges[car.e].L - 1) release(car);
-        } else if (endNode(car.e, car.dir) !== n) release(car);
       }
 
       // Pose: offset to the left lane (we drive on the left), smoothed through junctions
@@ -378,9 +434,20 @@ export function createTraffic(scene, DATA, count = 650) {
       else{
         const result=sweepPose({x:car.x,z:car.z,yaw:car.h},{x:nx,z:nz,yaw:nh},p=>contacts?.carBlocked(p.x,p.z,p.yaw,car.len/2,hw,car));
         car.x=result.x;car.z=result.z;car.h=result.yaw;
-        if(result.hit){car.e=oE;car.dir=oDir;car.s=oS;car.lane=oLane;car.next=oNext;car.v=0;car.brake=1;if(!contacts.hitsPerson(nx,nz,nh,car.len/2,hw,car)&&(car.stuckT=(car.stuckT||0)+dt)>5){car.stuckT=0;car.ghostT=2;}}
+        if(result.hit){car.why='hit';car.e=oE;car.dir=oDir;car.s=oS;car.lane=oLane;car.next=oNext;car.v=0;car.brake=1;if(!contacts.hitsPerson(nx,nz,nh,car.len/2,hw,car)&&(car.stuckT=(car.stuckT||0)+dt)>5){car.stuckT=0;car.ghostT=2;jamStats.ghosts++;}}
         else if(car.stuckT)car.stuckT=Math.max(0,car.stuckT-dt*.5);
       }
+
+      // Leave the junction box once our drawn tail (which trails the path by about v/6 m) is clear of it; checked after
+      // the sweep, which may have rolled us back into the box
+      if (car.jn >= 0) {
+        const n = car.jn, a = startNode(car.e, car.dir), z = endNode(car.e, car.dir);
+        if (isJn[z] && jc[z] === n) {} // still heading through (or across) our box
+        else if (isJn[a] && jc[a] === n) {
+          if (car.s - car.len / 2 > jRad[a] + 0.5 + car.v / 6 || car.s > edges[car.e].L - 1) release(car);
+        } else release(car);
+      }
+      car.stopT = car.v < 0.3 ? car.stopT + dt : 0;
 
       const y = groundY(car.x, car.z) + ROAD_Y;
       R.set(car.ri, car.x, y, car.z, car.h);
@@ -416,7 +483,7 @@ export function createTraffic(scene, DATA, count = 650) {
       if(!contacts.buildingBlocked(x,z,c.h,c.len/2,c.width/2)){c.x=x;c.z=z;return;}
     }
   }
-  return { setContacts: value=>{contacts=value;for(const c of cars)if(c.init)clearSpawn(c);}, parkedCars:parked, update, cars, lightCount: lights.size, parked: slots.length, renderer: R, crew };
+  return { setContacts: value=>{contacts=value;for(const c of cars)if(c.init)clearSpawn(c);}, parkedCars:parked, update, cars, lightCount: lights.size, jamStats, jCars, conflict, parked: slots.length, renderer: R, crew };
 }
 
 const byS = (a, b) => a.s - b.s;

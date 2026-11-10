@@ -60,9 +60,9 @@ export function createCollisionWorld(traffic, people, controls) {
       }
     },
     // withStatics=false skips posts, walls and furniture (far-off pedestrians: nobody can see them clip a bin)
-    personBlocked(x,z,r,owner,feet=0,withStatics=true) {
+    personBlocked(x,z,r,owner,feet=0,withStatics=true,withVehicles=true) {
       if(withStatics&&anyNear(statics,x,z,r,b=>feet<b.height&&circleBox(x,z,r,b)&&!(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6)))return true;
-      if(feet<1.8&&anyNear(vehicles,x,z,r,b=>{
+      if(withVehicles&&feet<1.8&&anyNear(vehicles,x,z,r,b=>{
         syncBody(b);
         if(b.owner===owner||!circleBox(x,z,r,b))return false;
         return !(owner&&circleBox(owner.x,owner.z,r,b)&&(x-b.x)**2+(z-b.z)**2>(owner.x-b.x)**2+(owner.z-b.z)**2+1e-6);
@@ -101,22 +101,25 @@ export function createCollisionWorld(traffic, people, controls) {
     trafficGap(car,look) {
       const b=fillBody(scratchB,car);
       const a=setBox(scratchA,b.x+b.sin*look/2,b.z+b.cos*look/2,b.yaw,b.hl+look/2,b.hw);
-      let gap=Infinity;car.heldByParked=false;
+      let gap=Infinity;car.heldByParked=false;car.heldByPed=false;
       const r=Math.hypot(a.hl,a.hw);
       anyNear(vehicles,a.x,a.z,r,o=>{
         syncBody(o);
         if(o.owner===car||!boxesOverlap(a,o))return false;
+        // oncoming traffic keeps to its own side: lanes and junction rights of way separate us, and stopping for it
+        // only left both cars facing each other forever
+        if(o.owner?.bucket!==undefined&&b.sin*o.sin+b.cos*o.cos<-.3)return false;
         const along=(o.x-b.x)*b.sin+(o.z-b.z)*b.cos;
         if(along<=0)return false;
         const extent=Math.abs(b.sin*o.sin+b.cos*o.cos)*o.hl+Math.abs(b.sin*o.cos-b.cos*o.sin)*o.hw;
         const g=Math.max(0,along-b.hl-extent);
-        if(g<gap){gap=g;car.heldByParked=o.owner===controls.car&&controls.mode!=='drive';}
+        if(g<gap){gap=g;car.heldByPed=false;car.heldByParked=o.owner===controls.car&&controls.mode!=='drive';}
         return false;
       });
       anyNear(pedestrians,a.x,a.z,r+.3,p=>{
         if(circleBox(p.x,p.z,.3,a)) {
           const along=(p.x-b.x)*b.sin+(p.z-b.z)*b.cos;
-          if(along>0)gap=Math.min(gap,Math.max(0,along-b.hl-.3));
+          if(along>0&&Math.max(0,along-b.hl-.3)<gap)gap=Math.max(0,along-b.hl-.3),car.heldByPed=true;
         }
         return false;
       });
