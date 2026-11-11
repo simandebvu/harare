@@ -206,6 +206,12 @@ export default {
     if (label !== last.label) ui.label.textContent = last.label = label;
     if (tag !== last.tag) ui.tag.textContent = last.tag = tag;
     if (cam.name !== last.cam) ui.camname.textContent = last.cam = cam.name;
+    // The overhead camera has its own controls: say those, not the flight keys, and put the flight hint back after
+    const help = document.getElementById('help'), inMap = mode === 'fly' && cam.id === 'map';
+    if (help && inMap !== !!last.mapHelp) {
+      if (inMap) (last.mapHelp = help.textContent), (help.textContent = 'Map view · drag to pan · scroll to zoom · right-drag to turn · V next camera · 2 land');
+      else (help.textContent === 'Map view · drag to pan · scroll to zoom · right-drag to turn · V next camera · 2 land' && (help.textContent = last.mapHelp)), (last.mapHelp = null);
+    }
 
     const kmh = Math.round(c.speed * 3.6);
     if (kmh !== last.speed) ui.num.textContent = last.speed = kmh;

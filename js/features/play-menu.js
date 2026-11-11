@@ -42,9 +42,11 @@ export default {
   this.welcome(ctx);
   document.querySelector('.shift-launch').textContent='Kombi shift · taxi mission';
   ctx.setMode('walk');
+  // Opening shot: step past the parked kombi and the parking sign so the first view runs down the street, not into a shutter
+  {const c=ctx.controls,w=c.walk,y=c.car.yaw;w.x+=Math.sin(y)*14;w.z+=Math.cos(y)*14;w.yaw=c.rig.yaw=y-.25;c.rig.orbitYaw=0;c.nudgeFree(w);c.rig.snapNext=true;}
   this.ctx=ctx;this.update();
  },
- update(){document.body.dataset.playMode=this.ctx.controls.mode;},
+ update(){const m=this.ctx.controls.mode;document.body.dataset.playMode=m;if(m!=='walk')this.hideHint?.();},
  // First visit: one card that says what this is and offers three ways in. Afterwards (and on later visits) a hint
  // teaches the one thing nobody guesses: the camera only follows the mouse after you click the city.
  welcome(ctx){
@@ -63,10 +65,10 @@ export default {
   hint.textContent=touch?'Drag to look around · use the stick to move':'Click the city to look around';
   document.body.appendChild(hint);
   let looked=false;
-  const done=()=>{looked=true;hint.hidden=true;};
+  const done=()=>{looked=true;hint.hidden=true;};this.hideHint=done;
   document.addEventListener('pointerlockchange',()=>document.pointerLockElement&&done());
   if(touch)ctx.renderer.domElement.addEventListener('pointermove',e=>e.buttons&&done());
-  const showHint=()=>{if(looked)return;hint.hidden=false;setTimeout(done,25000);};
+  const showHint=()=>{if(looked)return;hint.hidden=false;setTimeout(done,12000);};
   let seen=false;try{seen=localStorage.getItem('harare-welcomed')==='1';}catch{}
   if(seen)return showHint();
   const card=document.createElement('section');card.className='welcome';card.setAttribute('role','dialog');card.setAttribute('aria-labelledby','welcome-title');

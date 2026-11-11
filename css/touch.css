@@ -1,0 +1,94 @@
+/* css/touch.css — phone layouts. Loaded by js/features/play-menu.js after every feature's own styles, and scoped to
+   body.gm-has-touch (set by js/features/game.js on a touch screen) so the desktop layout is untouched. */
+
+/* Any touch screen: the keyboard reference line is noise, and the look hint sits mid-screen, clear of the buttons */
+body.gm-has-touch #help { display: none; }
+body.gm-has-touch .look-hint { top: 42%; font-size: 14px; max-width: 80vw; text-align: center; }
+body.gm-has-touch .gm-keys { display: none; }
+/* No second panel over an open mission card */
+body.gm-has-touch:has(.shift-card:not([hidden])) .garage,
+body.gm-has-touch:has(.supply-card:not([hidden])) .garage { display: none; }
+
+/* ---- Portrait phone ---------------------------------------------------------------------------------------------- */
+@media (max-width: 600px) and (orientation: portrait) {
+  body.gm-has-touch .shift-launch,
+  body.gm-has-touch .supply-launch { left: 10px; padding: 9px 12px; font-size: 11.5px; border-radius: 9px; }
+  body.gm-has-touch .shift-launch { top: 66px; }
+  body.gm-has-touch .supply-launch { top: 106px; }
+  /* "Choose your ride": just the picker, top right, beside the mission buttons */
+  body.gm-has-touch .garage { top: 66px !important; right: 10px; width: 148px; padding: 8px 9px; border-radius: 11px; }
+  body.gm-has-touch .garage strong { margin-bottom: 5px; font-size: 9px; }
+  body.gm-has-touch .garage select { padding: 6px; font-size: 11.5px; }
+  body.gm-has-touch .garage p, body.gm-has-touch .garage button { display: none; }
+  /* Mission cards: a full-width sheet under the top bar, above the signs, ending above the thumb controls */
+  body.gm-has-touch .shift-card,
+  body.gm-has-touch .supply-card { top: 66px; left: 10px; right: 10px; width: auto; max-height: calc(100dvh - 470px); min-height: 0; overflow: auto; padding: 14px 16px; z-index: 35; }
+  body.gm-has-touch .shift-card h2 { font-size: 18px; margin: 6px 0 8px; }
+  body.gm-has-touch .shift-card p { margin: 6px 0; font-size: 12.5px; }
+  body.gm-has-touch .shift-stats { grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+  body.gm-has-touch .shift-stats b { font-size: 16px; }
+  body.gm-has-touch .shift-actions { margin-top: 10px; }
+  /* Before a shift starts the card is a choice to make: let it cover the thumb controls rather than hide its buttons */
+  body.gm-has-touch .shift-card:not(.is-active) { max-height: calc(100dvh - 150px); }
+  body.gm-has-touch .look-hint { top: 27%; }
+  /* Speed readout: the Cam button already changes camera, so drop the camera row and slim the gauge */
+  body.gm-has-touch .gm-cams { display: none; }
+  body.gm-has-touch .gm-cluster { width: 168px; }
+  body.gm-has-touch .gm-num { font-size: 28px; }
+  /* A running shift only needs the headline and the numbers */
+  body.gm-has-touch .shift-card.is-active .shift-eyebrow,
+  body.gm-has-touch .shift-card.is-active .shift-hint { display: none; }
+}
+
+/* ---- Landscape phone: 390 px of height has room for one row top and one row bottom ---------------------------- */
+@media (max-height: 500px) and (orientation: landscape) {
+  body.gm-has-touch { --edge: 10px; }
+  body.gm-has-touch .hud-tl { top: 8px; left: max(10px, env(safe-area-inset-left)); }
+  body.gm-has-touch .brand { padding: 4px 10px 4px 4px; gap: 8px; border-radius: 12px; }
+  body.gm-has-touch .badge { width: 32px; height: 16px; }
+  body.gm-has-touch .title { font-size: 13px; }
+  body.gm-has-touch .brand-sub { font-size: 10px; }
+  body.gm-has-touch .play-menu-trigger { top: 8px; right: max(10px, env(safe-area-inset-right)); padding: 9px 14px; font-size: 13px; }
+  body.gm-has-touch .sound-toggle { top: 8px; width: 38px; height: 38px; }
+  /* Missions: one row beside the brand */
+  body.gm-has-touch .shift-launch,
+  body.gm-has-touch .supply-launch { top: 8px; padding: 9px 11px; font-size: 11px; }
+  body.gm-has-touch .shift-launch { left: calc(max(10px, env(safe-area-inset-left)) + 168px); }
+  body.gm-has-touch .supply-launch { left: calc(max(10px, env(safe-area-inset-left)) + 340px); }
+  /* Minimap top right under the menu; the street signs repeat what it shows */
+  body.gm-has-touch .hud-bl { top: 56px; bottom: auto; left: auto; right: max(10px, env(safe-area-inset-right)); }
+  body.gm-has-touch .signs { display: none; }
+  body.gm-has-touch .radar { width: 104px; height: 104px; border-radius: 16px; }
+  /* Speed: a small readout under the minimap, no camera row (the Cam button does that) */
+  body.gm-has-touch .gm-hud { top: 168px; bottom: auto; right: max(10px, env(safe-area-inset-right)); }
+  body.gm-has-touch .gm-cluster { width: 104px; }
+  body.gm-has-touch .gm-cams, body.gm-has-touch .gm-meter, body.gm-has-touch .gm-tag, body.gm-has-touch .gm-unit { display: none; }
+  body.gm-has-touch .gm-gauge { padding: 6px 10px 7px; }
+  body.gm-has-touch .gm-label { font-size: 9px; }
+  body.gm-has-touch .gm-num { font-size: 24px; }
+  /* Thumbs: stick bottom left, buttons bottom right, mode switch between them */
+  body.gm-has-touch .gm-stick { left: max(18px, env(safe-area-inset-left)); bottom: 14px; width: 112px; height: 112px; }
+  body.gm-has-touch .gm-acts { right: max(132px, calc(env(safe-area-inset-right) + 122px)); bottom: 12px; grid-template-columns: repeat(2, 54px); gap: 8px; }
+  body.gm-has-touch .gm-act { width: 54px; height: 54px; }
+  body.gm-has-touch .hud-bc { bottom: 8px; }
+  body.gm-has-touch .modes button { height: 40px; padding: 0 12px; font-size: 13px; }
+  body.gm-has-touch .modes kbd { display: none; }
+  body.gm-has-touch .supply-action { bottom: 62px; left: 50%; right: auto; transform: translateX(-50%); padding: 9px 16px; font-size: 13px; }
+  body.gm-has-touch .look-hint { top: 34%; }
+  body.gm-has-touch .toast { top: 56px; }
+  body.gm-has-touch .garage { top: 56px !important; left: max(10px, env(safe-area-inset-left)); right: auto; width: 150px; padding: 8px 9px; border-radius: 11px; }
+  body.gm-has-touch .garage strong { margin-bottom: 5px; font-size: 9px; }
+  body.gm-has-touch .garage select { padding: 6px; font-size: 11.5px; }
+  body.gm-has-touch .garage p, body.gm-has-touch .garage button { display: none; }
+  /* Mission cards: a left-hand panel that scrolls, ending above the stick */
+  body.gm-has-touch .shift-card,
+  body.gm-has-touch .supply-card { top: 56px; left: max(10px, env(safe-area-inset-left)); width: 300px; max-height: calc(100dvh - 196px); overflow: auto; padding: 12px 14px; z-index: 35; }
+  body.gm-has-touch .shift-card:not(.is-active) { max-height: calc(100dvh - 66px); width: 360px; }
+  body.gm-has-touch .shift-card h2 { font-size: 17px; margin: 5px 0 6px; }
+  body.gm-has-touch .shift-card p { margin: 5px 0; font-size: 12px; }
+  body.gm-has-touch .shift-stats { grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0; }
+  body.gm-has-touch .shift-stats b { font-size: 15px; }
+  body.gm-has-touch .shift-actions { margin-top: 8px; }
+  body.gm-has-touch .shift-card.is-active .shift-eyebrow,
+  body.gm-has-touch .shift-card.is-active .shift-hint { display: none; }
+}

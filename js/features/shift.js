@@ -47,7 +47,7 @@ export default {
   // Same figure as the GPS chip: the road distance, not the straight line
   roadDistance(){const d=this.distance||0,r=window.__harare.nav?.routeLen,m=d>22&&r?Math.max(d,r):d;return m<950?Math.round(m/10)*10+' m':(m/1000).toFixed(1)+' km';},
   render(){
-    const s=this.state,active=s.status==='active',done=s.status==='finished',q=sel=>this.ui.querySelector(sel),money=n=>'$'+n.toFixed(2);
+    const s=this.state,active=s.status==='active',done=s.status==='finished',q=sel=>this.ui.querySelector(sel),money=n=>'$'+n.toFixed(2);this.ui.classList.toggle('is-active',active);
     q('h2').textContent=active?(s.onboard?'Take your passengers to '+this.stops[s.target].name:'Pick up at '+this.stops[s.target].name):done?s.reason:'Make your first takings.';
     q('.shift-copy').textContent=active?`${this.roadDistance()} to stop · ${s.onboard}/${s.capacity} passengers` :done?`${s.delivered} passengers delivered · ${s.trips} ${s.trips===1?'trip':'trips'}. ${s.profit>0?'You covered the shift costs.':'Try another shift to cover your costs.'}`:'Fourth Street ↔ Charge Office. Stop in the yellow ring for four seconds to board or drop off. Earn $24 in fares before the ten-minute shift ends.';
     q('.shift-stats').innerHTML=active?`<span><b>${Math.floor(s.remaining/60)}:${String(Math.floor(s.remaining%60)).padStart(2,'0')}</b> time left</span><span><b>${money(s.cash)}</b> / $24 fares</span><span><b>${Math.ceil(s.fuel)}%</b> ${s.vehicle==='roadster'?'battery':'fuel'}</span><span><b>${Math.round(s.comfort)}%</b> comfort</span>`:done?`<span><b>${money(s.cash)}</b> fares</span><span><b>${money(8+s.repairs+(100-s.fuel)*.04)}</b> costs</span><span><b>${money(s.profit)}</b> take-home</span>`:'';
