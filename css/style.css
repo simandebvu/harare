@@ -391,3 +391,8 @@ body.ui-hidden .label { opacity: 0; }
 @media (hover: none) {
   .radar-key { display: none; }
 }
+
+/* Key hints fade once you've had time to read them; any mode switch brings them back (js/main.js flashHints) */
+#help, .gm-keys { transition: opacity 0.6s ease; }
+body:not(.hints-on) #help { opacity: 0; }
+body:not(.hints-on) .gm-keys { display: none; }

@@ -225,17 +225,25 @@ async function init() {
     walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · R fly or enter taxi · V camera',
     drive: 'Click the city to look around · W/S gas & reverse · A/D steer · Space brake · R get out · keep left!',
   };
+  // The key reference shows for a while after each mode switch, then gets out of the way of the city
+  let hintTimer = 0;
+  const flashHints = () => {
+    document.body.classList.add('hints-on');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => document.body.classList.remove('hints-on'), 10000);
+  };
   const buttons = [...document.querySelectorAll('.modes button')];
   const setMode = (m) => {
     if(controls.setMode(m)===false)return;
     buttons.forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
     help.textContent = HELP[m];
+    flashHints();
     const landButton=document.querySelector('[data-mode="walk"] .mode-label');
     if(landButton)landButton.textContent=m==='fly'?'Land':'Walk';
     labels.visible = m === 'fly' && labelsOn;
     labelRenderer.domElement.style.display = labels.visible ? '' : 'none';
   };
-  addEventListener('harare:landing',()=>{help.textContent='Landing… · A/D steer · W move to clear ground · 1 cancel';});
+  addEventListener('harare:landing',()=>{help.textContent='Landing… · A/D steer · W move to clear ground · 1 cancel';flashHints();});
   addEventListener('harare:landed',e=>setMode(e.detail));
   let labelsOn = true;
   buttons.forEach((b) => b.addEventListener('click', (e) => {
@@ -268,7 +276,7 @@ async function init() {
   const ctx = {
     THREE, DATA, scene, camera, renderer, post, sun, sky, clouds, detailedCrowd, contacts,
     world, buildings, trees, traffic, people, controls, labels,
-    setMode,
+    setMode, flashHints,
     getMode: () => controls.mode,
     getHour: () => hour,
     setHour(h) {

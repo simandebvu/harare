@@ -209,6 +209,7 @@ export default {
     // The overhead camera has its own controls: say those, not the flight keys, and put the flight hint back after
     const help = document.getElementById('help'), inMap = mode === 'fly' && cam.id === 'map';
     if (help && inMap !== !!last.mapHelp) {
+      ctx.flashHints?.();
       if (inMap) (last.mapHelp = help.textContent), (help.textContent = 'Map view · drag to pan · scroll to zoom · right-drag to turn · V next camera · 2 land');
       else (help.textContent === 'Map view · drag to pan · scroll to zoom · right-drag to turn · V next camera · 2 land' && (help.textContent = last.mapHelp)), (last.mapHelp = null);
     }
