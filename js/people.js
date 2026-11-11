@@ -360,7 +360,11 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
           if (toEnd > kerb && toEnd < kerb + 0.3 + p.wq && STREET.signal(L, p.dir > 0 ? E.axB : E.axA, st) !== 0) go = 0;
         }
       }
-      p.d += p.v * dt * p.dir * go;
+      // Scared by the hero (a slam, a car thrown nearby): run for it, hands up, ignoring the robots
+      const pan = p.panic > 0 ? ((p.panic -= dt), 1) : 0;
+      if (pan) go = 1;
+      const pv = p.v * (1 + pan * 1.8);
+      p.d += pv * dt * p.dir * go;
       if (p.d < 0 || p.d > E.L) {
         const node = p.d < 0 ? E.a : E.b;
         const opts = at.get(node);
@@ -389,7 +393,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       if (!p.init) {p.x=tx;p.z=tz;p.init=true;clearSpawn(p);}
       const k = Math.min(1, dt * 3);
       const dx=tx-p.x,dz=tz-p.z,distance=Math.hypot(dx,dz);
-      const step=Math.min(distance*k,p.v*dt);
+      const step=Math.min(distance*k,pv*dt);
       const moved=movePerson(p,p.x+(distance?dx/distance*step:0),p.z+(distance?dz/distance*step:0));
       if(p.squeezeT!==undefined)p.squeezeT-=dt; // counts on below zero: a 3 s pause before the next squeeze
       if(!moved){p.e=oE;p.d=oD;p.dir=oDir;go=0;p.stuck=(p.stuck||0)+dt;
@@ -403,7 +407,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       }
       p.amp = ease(p.amp, go, kA);
       F.place(p.i, p.x, groundY(p.x, p.z) + PAVE, p.z, p.yaw, p.s, p.b);
-      F.animate(p.i, p.actualSpeed, 0);
+      F.animate(p.i, p.actualSpeed, pan);
     }
 
     // Stall sellers: mostly still, now and then calling out with a raised hand
@@ -423,7 +427,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
         const dx = p.tx - p.x, dz = p.tz - p.z, d = Math.hypot(dx, dz);
         if (d < 0.15) (p.moving = false), (p.t = 2 + r() * 8);
         else {
-          const step = Math.min(d, p.v * 0.75 * dt);
+          const step = Math.min(d, p.v * (p.panic > 0 ? 2.6 : 0.75) * dt);
           if(!movePerson(p,p.x+(dx/d)*step,p.z+(dz/d)*step)){p.moving=false;p.t=1;}
           let dh = Math.atan2(dx, dz) - p.yaw;
           p.yaw += Math.atan2(Math.sin(dh), Math.cos(dh)) * Math.min(1, dt * 6);
@@ -440,7 +444,8 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
           p.yaw += (r() - 0.5) * 1.6;
         }
       }
-      const gestT = p.kind === 'tout' ? (Math.sin(time * 0.9 + p.ax) > 0.1 ? 1 : 0) : 0;
+      if (p.panic > 0) p.panic -= dt;
+      const gestT = p.panic > 0 ? 1 : p.kind === 'tout' ? (Math.sin(time * 0.9 + p.ax) > 0.1 ? 1 : 0) : 0;
       p.actualSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/Math.max(dt,.001);
       p.amp = ease(p.amp, p.moving ? 1 : 0, kA);
       p.g = ease(p.g, gestT, kA);
@@ -494,7 +499,30 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   for(const p of loiter)clearSpawn(p);
   update(0);
 
-  return { deferCommit(){deferCommit=true;}, get time(){return time;}, setContacts: value=>{contacts=value;}, update, walkers, loiter, hawkerList: hawkers, figures: F, stallSpots: stalls, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
+  // Everyone on the pavement within r of (x, z) runs away from it for a few seconds, shoved back by the blast
+  function scare(x, z, rad, shove = 0) {
+    for (const p of walkers) {
+      if (p.hidden || !p.init) continue;
+      const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz);
+      if (d > rad) continue;
+      const k = 1 - d / rad;
+      p.panic = Math.max(p.panic || 0, 2.5 + k * 3);
+      sample(p.e, p.d, tmp);
+      p.dir = tmp.tx * dx + tmp.tz * dz >= 0 ? 1 : -1;
+      if (shove > 0 && d > 0.01) movePerson(p, p.x + (dx / d) * shove * k, p.z + (dz / d) * shove * k);
+    }
+    // The rank crowds scatter to a clear spot further from the blast; they drift back to their spot later
+    for (const p of loiter) {
+      const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz);
+      if (d > rad || d < 0.01) continue;
+      p.panic = 2 + (1 - d / rad) * 2.5;
+      for (const run of [8, 5, 3]) {
+        const a = Math.atan2(dx, dz) + (r() - 0.5) * 0.8, tx = p.x + Math.sin(a) * run, tz = p.z + Math.cos(a) * run;
+        if (!solid(tx, tz)) { p.tx = tx; p.tz = tz; p.moving = true; p.t = 6 + r() * 6; break; }
+      }
+    }
+  }
+  return { scare, deferCommit(){deferCommit=true;}, get time(){return time;}, setContacts: value=>{contacts=value;}, update, walkers, loiter, hawkerList: hawkers, figures: F, stallSpots: stalls, count: walkers.length + loiter.length + hawkers.length, stalls: ns, crowd: loiter.length, hawkers: hawkers.length };
 }
 
 // Upturned plastic beer crate (0.4 m tall before scaling): slatted sides as dark bands

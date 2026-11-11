@@ -218,7 +218,7 @@ export function createTraffic(scene, DATA, count = 650) {
   const parked = slots.map((s) => {
     const i = look('kombi');
     R.set(i, s.x, groundY(s.x, s.z) + s.y, s.z, s.yaw);
-    return { x:s.x,z:s.z,h:s.yaw,len:4.9,width:VEHICLE_TYPES.kombi.width,type:'kombi',init:true,i, cab: r() < 0.3 ? 1 : 0, park: r() < 0.15 ? 1 : 0 };
+    return { x:s.x,z:s.z,y:groundY(s.x, s.z) + s.y,h:s.yaw,len:4.9,width:VEHICLE_TYPES.kombi.width,type:'kombi',init:true,i, cab: r() < 0.3 ? 1 : 0, park: r() < 0.15 ? 1 : 0 };
   });
 
   // Conductors (hwindi) hanging out of the sliding door of moving kombis
@@ -308,6 +308,7 @@ export function createTraffic(scene, DATA, count = 650) {
     jWaitNext.fill(null);
     for (const b of buckets.values()) b.length = 0;
     for (const car of cars) {
+      if (car.away > 0) continue; // lifted by the hero: off the road until it respawns
       const k = car.e * 2 + (car.dir > 0 ? 1 : 0);
       let b = buckets.get(k);
       if (!b) buckets.set(k, (b = []));
@@ -320,6 +321,14 @@ export function createTraffic(scene, DATA, count = 650) {
 
     const vp = contacts?.viewPos?.();
     for (const car of cars) {
+      if (car.away > 0) {
+        car.away -= dt;
+        R.set(car.ri, 0, -500, 0, 0);
+        R.lamp(car.ri, 0, 0, 0, 0);
+        if (car.crew !== undefined) crew.place(car.crew, 0, -500, 0, 0, 0.98, 1);
+        if (car.away <= 0) respawn(car);
+        continue;
+      }
       const E = edges[car.e];
       const oE=car.e,oDir=car.dir,oS=car.s,oLane=car.lane,oNext=car.next;
       const remaining = E.L - car.s;
@@ -467,7 +476,14 @@ export function createTraffic(scene, DATA, count = 650) {
         crew.animate(car.crew, 0, car.wait > 0 || car.v < 3 ? 1 : 0);
       }
     }
-    for (const P of parked) R.lamp(P.i, 0.1 * P.park * nightness, 0.15 * P.park * nightness, 0, P.cab * nightness);
+    for (const P of parked) {
+      if (P.away > 0) {
+        P.away -= dt;
+        if (P.away > 0) { R.set(P.i, 0, -500, 0, 0); R.lamp(P.i, 0, 0, 0, 0); continue; }
+        R.set(P.i, P.x, P.y, P.z, P.h); // repaired and back on the rank
+      }
+      R.lamp(P.i, 0.1 * P.park * nightness, 0.15 * P.park * nightness, 0, P.cab * nightness);
+    }
     R.commit(time, nightness);
     crew.commit(time);
     rankLights.update(nightness);
@@ -475,6 +491,28 @@ export function createTraffic(scene, DATA, count = 650) {
     robots.update(time, nightness);
   }
 
+  // The hero lifts a vehicle off the street: it leaves the simulation (and the renderer) for `secs`
+  function take(c, secs) {
+    c.away = secs;
+    if (parked.includes(c)) { R.set(c.i, 0, -500, 0, 0); return; }
+    if (c.jn >= 0) release(c);
+    c.v = 0;
+    R.set(c.ri, 0, -500, 0, 0);
+  }
+  // ... and it comes back as good as new somewhere out of sight, joining the traffic from a standstill
+  function respawn(car) {
+    const vp = contacts?.viewPos?.();
+    let e = pickEdge();
+    for (let k = 0; k < 12 && vp; k++) {
+      const p = edges[e].p;
+      if (Math.hypot(p[0] - vp.x, p[1] - vp.z) > 160) break;
+      e = pickEdge();
+    }
+    const E = edges[e];
+    if (car.jn >= 0) release(car);
+    Object.assign(car, { e, dir: E.o === -1 ? -1 : E.o === 1 ? 1 : r() < 0.5 ? 1 : -1, s: r() * E.L, lane: Math.floor(r() * E.lanesDir), v: 0, wait: 0, stopT: 0, ghostT: 2, init: false, away: 0, mvJ: -1, reqN: -1 });
+    car.next = chooseNext(car);
+  }
   function clearSpawn(c) {
     if(!contacts?.buildingBlocked(c.x,c.z,c.h,c.len/2,c.width/2))return;
     const ox=c.x,oz=c.z;
@@ -483,7 +521,7 @@ export function createTraffic(scene, DATA, count = 650) {
       if(!contacts.buildingBlocked(x,z,c.h,c.len/2,c.width/2)){c.x=x;c.z=z;return;}
     }
   }
-  return { setContacts: value=>{contacts=value;for(const c of cars)if(c.init)clearSpawn(c);}, parkedCars:parked, update, cars, lightCount: lights.size, jamStats, jCars, conflict, parked: slots.length, renderer: R, crew };
+  return { setContacts: value=>{contacts=value;for(const c of cars)if(c.init)clearSpawn(c);}, parkedCars:parked, take, update, cars, lightCount: lights.size, jamStats, jCars, conflict, parked: slots.length, renderer: R, crew };
 }
 
 const byS = (a, b) => a.s - b.s;

@@ -49,8 +49,8 @@ export function createCollisionWorld(traffic, people, controls) {
     refresh() {
       for(const b of vehicles.map.values())b.length=0;
       for(const b of pedestrians.map.values())b.length=0;
-      for(const car of traffic.cars)if(car.init)insertVehicle(car);
-      for(const car of traffic.parkedCars)insertVehicle(car);
+      for(const car of traffic.cars)if(car.init&&!(car.away>0))insertVehicle(car);
+      for(const car of traffic.parkedCars)if(!(car.away>0))insertVehicle(car);
       if(controls.kombi.visible && !(controls.car.alt>=4.6))insertVehicle(controls.car);
       for(const list of [people.walkers,people.loiter,people.hawkerList])for(const p of list) {
         if(Number.isFinite(p.x)&&!p.hidden)pedestrians.insert(p,p.x-.28,p.z-.28,p.x+.28,p.z+.28);

@@ -11,6 +11,9 @@ body.gm-has-touch:has(.supply-card:not([hidden])) .garage { display: none; }
 
 /* ---- Portrait phone ---------------------------------------------------------------------------------------------- */
 @media (max-width: 600px) and (orientation: portrait) {
+  /* Up to five actions plus Cam (powers): three across keeps them two rows high, clear of the mission pill */
+  body.gm-has-touch .gm-acts { grid-template-columns: repeat(3, 52px); gap: 7px; }
+  body.gm-has-touch .gm-act { width: 52px; height: 52px; }
   body.gm-has-touch .shift-launch,
   body.gm-has-touch .supply-launch { left: 10px; padding: 9px 12px; font-size: 11.5px; border-radius: 9px; }
   body.gm-has-touch .shift-launch { top: 66px; }

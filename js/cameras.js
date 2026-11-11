@@ -348,6 +348,8 @@ export class CameraRig {
     } else if (walk) (dist = 4.2), (height = 1.75), (lookH = 1.45), (fov = 56);
     else (dist = 10 + sp * 0.08), (height = 2.7), (lookH = 1.9), (fov = 55 + Math.min(16, sp * 0.45) + (t.boost ? 6 : 0));
 
+    // Carrying a car overhead (powers): back off and look higher so the car doesn't fill the screen
+    if (this.carry > 0.01) (dist += 4.5 * this.carry), (height += 1.4 * this.carry), (lookH += 1.5 * this.carry);
     dist *= this.zoom;
     const pitch = preset.id === 'action' ? 0 : this.pitch;
     const cp = Math.cos(pitch), spch = Math.sin(pitch);

@@ -9,13 +9,13 @@ const LABELS = {
 };
 const KEYS = {
   drive: '<kbd>W</kbd><kbd>S</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> brake · <kbd>Shift</kbd> boost · <kbd>H</kbd> hoot',
-  walk: '<kbd>WASD</kbd> walk · click to look · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump',
-  fly: '<kbd>WASD</kbd> fly · <kbd>Space</kbd>/<kbd>E</kbd> rise · <kbd>C</kbd>/<kbd>Q</kbd> descend · click to look · <kbd>Shift</kbd> fast',
+  walk: '<kbd>WASD</kbd> walk · click to look · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>G</kbd> lift / throw · <kbd>X</kbd> stomp',
+  fly: '<kbd>WASD</kbd> fly · <kbd>Space</kbd>/<kbd>E</kbd> rise · <kbd>C</kbd>/<kbd>Q</kbd> descend · click to look · <kbd>Shift</kbd> fast · <kbd>G</kbd> lift / throw · <kbd>X</kbd> slam',
 };
 const TOUCH_ACTIONS = {
   drive: [['brake', 'Brake'], ['run', 'Boost'], ['hoot', 'Hoot']],
-  walk: [['jump', 'Jump'], ['run', 'Run']],
-  fly: [['up', 'Up'], ['down', 'Down'], ['run', 'Fast']],
+  walk: [['jump', 'Jump'], ['run', 'Run'], ['grab', 'Lift'], ['slam', 'Stomp']],
+  fly: [['up', 'Up'], ['down', 'Down'], ['run', 'Fast'], ['grab', 'Lift'], ['slam', 'Slam']],
 };
 
 // Start where the city is busiest: Jason Moyo Avenue heading west past Africa Unity Square, in the left lane
@@ -163,6 +163,7 @@ function setTouchActions(ctx, mode) {
       else if (a === 'up') T.up = on ? 1 : 0;
       else if (a === 'down') T.up = on ? -1 : 0;
       else if (a === 'hoot' && on) ctx.controls.hoot();
+      else if ((a === 'grab' || a === 'slam') && on) dispatchEvent(new CustomEvent('harare:power', { detail: a }));
     };
     b.addEventListener('pointerdown', (e) => (e.preventDefault(), b.setPointerCapture(e.pointerId), set(true)));
     for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(t, () => set(false));

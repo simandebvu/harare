@@ -221,8 +221,8 @@ async function init() {
   // --- HUD -------------------------------------------------------------------------------------------------------------
   const help = document.getElementById('help');
   const HELP = {
-    fly: 'Look up or down and hold W to climb or dive · Space / E rise · C / Q descend · Shift boost · 2 land · V camera',
-    walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · R fly or enter taxi · V camera',
+    fly: 'Look up or down and hold W to climb or dive · Space / E rise · C / Q descend · Shift boost · G lift / throw a car · X slam down · 2 land · V camera',
+    walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · G lift / throw a car · X stomp · R fly or enter taxi · V camera',
     drive: 'Click the city to look around · W/S gas & reverse · A/D steer · Space brake · R get out · keep left!',
   };
   // The key reference shows for a while after each mode switch, then gets out of the way of the city

@@ -173,7 +173,7 @@ export class Controls {
   setMode(mode) {
     if((this.car?.alt||0)>.01 && mode!==this.mode)return false;
     const prev = this.mode;
-    if (this.flightStarted && prev === 'fly' && mode === 'fly') { if(this.heli.phase!=='impact')this.heli.landing = null; return; }
+    if (this.flightStarted && prev === 'fly' && mode === 'fly') { if(this.heli.phase!=='impact')this.heli.landing = this.heli.slam = null; return; }
     if(prev==='fly' && ['charge','impact'].includes(this.heli.phase))return false;
     if (this.flightStarted && prev === 'fly' && mode !== 'fly' && this.rig.current.id !== 'map' && this.heli.y > this.surfaceY(this.heli.x,this.heli.z,this.heli.y)+.22) {
       this.heli.landing = mode;
@@ -487,7 +487,8 @@ export class Controls {
     h.climb = climb;
     const tx = fx * I.fwd * fast * Math.cos(climb), tz = fz * I.fwd * fast * Math.cos(climb);
     let ty=THREE.MathUtils.clamp(up,-1,1)*(I.run?30:14) + I.fwd * fast * Math.sin(climb);
-    if(h.landing) ty=-Math.min(18,Math.max(1.2,clearance*3));
+    // A slam (powers) comes straight down at full speed instead of easing onto the street
+    if(h.landing) ty=h.slam?-72:-Math.min(18,Math.max(1.2,clearance*3));
     else if(clearance<2.34 && up>=0)ty=Math.max(ty,(2.34-clearance)*3);
     // Strong enough to clear shop awnings and first-floor ledges before settling into a hover
     if(h.phase==='launch')ty=Math.max(ty,24*(1-h.phaseTime/.9));
@@ -519,14 +520,14 @@ export class Controls {
     const touch=this.surfaceY(h.x,h.z,h.y); // the roof or street below: a landing ends on whichever comes first
     if(h.landing && h.phase!=='impact' && h.y<=touch+.22){
       h.phase='impact';h.phaseTime=0;h.y=touch+.16;h.vx=h.vy=h.vz=0;
-      dispatchEvent(new CustomEvent('harare:hero-burst',{detail:{x:h.x,y:touch,z:h.z,kind:'land'}}));
+      dispatchEvent(new CustomEvent('harare:hero-burst',{detail:{x:h.x,y:touch,z:h.z,kind:'land',slam:h.slam?h.slam-touch:0}}));h.slam=null;
     }
     if(h.phase==='impact' && h.phaseTime>=.72){
       const next=h.landing||'walk';h.landing=null;h.phase='cruise';
       dispatchEvent(new CustomEvent('harare:landed',{detail:next}));return;
     }
     if (still) return;
-    const speed=Math.hypot(h.vx,h.vz),distance=6+Math.min(2,speed*.035);
+    const speed=Math.hypot(h.vx,h.vz),distance=6+Math.min(2,speed*.035)+(this.rig.carry||0)*5;
     // Missions can ask the camera (not the flight path) to look further down, e.g. at a drop target below the hero
     this.viewDipNow=(this.viewDipNow||0)+((this.viewDip||0)-(this.viewDipNow||0))*(1-Math.exp(-dt*3));
     const vp=THREE.MathUtils.clamp(h.pitch-this.viewDipNow,-1.35,.9);
