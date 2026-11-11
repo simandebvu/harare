@@ -394,7 +394,7 @@ export class Controls {
       if (preset.id === 'map') this.updateMap(dt);
       else if (preset.id === 'heli') this.updateHeli(dt);
       else this.updateHeli(dt, true), this.rig.update(dt, this.heliTarget(), I);
-      if(preset.id!=='map'){const h=this.heli,hs=Math.hypot(h.vx,h.vz);this.player.flightAction={phase:h.phase,time:h.phaseTime,landing:!!h.landing,climb:hs+Math.abs(h.vy)>2?Math.atan2(h.vy,hs):0};this.player.update(dt,h.x,h.y,h.z,h.yaw,Math.hypot(hs,h.vy),false,h.bank,true);}
+      if(preset.id!=='map'){const h=this.heli,hs=Math.hypot(h.vx,h.vz);this.player.flightAction={phase:h.phase,time:h.phaseTime,landing:!!h.landing,slam:!!h.slam,climb:hs+Math.abs(h.vy)>2?Math.atan2(h.vy,hs):0};this.player.update(dt,h.x,h.y,h.z,h.yaw,Math.hypot(hs,h.vy),false,h.bank,true);}
     } else if (this.mode === 'walk') {
       this.updateWalk(dt);
       const w = this.walk;

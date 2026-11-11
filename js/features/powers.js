@@ -56,8 +56,20 @@ export default {
 
   grab() {
     if (this.held) return this.throw();
+    const best = this.target();
+    if (!best) return this.hero() && this.toast(this.ctx.controls.mode === 'fly' ? 'Fly down next to a car to lift it' : 'Walk up to a car to lift it');
+    const p = this.spawnProp(best.car, best.parked, best.base);
+    if (!p) return;
+    p.state = 'held';
+    p.lift = 0;
+    this.held = p;
+    this.say('lift');
+  },
+
+  // The vehicle within arm's reach of the hero, if any (also drives the "Lift" prompt)
+  target() {
     const me = this.hero();
-    if (!me) return;
+    if (!me) return null;
     const tr = this.ctx.traffic;
     let best = null, bd = GRAB_REACH;
     const consider = (car, parked) => {
@@ -72,13 +84,7 @@ export default {
     };
     for (const car of tr.cars) consider(car, false);
     for (const car of tr.parkedCars) consider(car, true);
-    if (!best) return this.toast(this.ctx.controls.mode === 'fly' ? 'Fly down next to a car to lift it' : 'Walk up to a car to lift it');
-    const p = this.spawnProp(best.car, best.parked, best.base);
-    if (!p) return;
-    p.state = 'held';
-    p.lift = 0;
-    this.held = p;
-    this.say('lift');
+    return best;
   },
 
   throw() {
@@ -92,6 +98,7 @@ export default {
     p.vel.set(dir.x * 30 * heavy, Math.max(dir.y * 30, 0) * heavy + 7, dir.z * 30 * heavy);
     if (me) p.vel.add(this.v.a.set(me.vx, me.vy, me.vz));
     p.spin.set((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 5);
+    this.throwT = 0.42; // arms follow through (pose)
     this.say('throw');
   },
 
@@ -108,7 +115,16 @@ export default {
       if (!h.landing) h.slam = null;
       return;
     }
-    if (c.walk.air) return;
+    if (c.walk.air || this.pound) return;
+    // Ground pound: hop with both fists raised, then drive them into the street as you land (see update)
+    c.walk.vy = 6.5;
+    c.walk.air = true;
+    this.pound = true;
+    dispatchEvent(new CustomEvent('harare:jump'));
+  },
+  stompHit() {
+    const me = this.hero();
+    if (!me || this.ctx.controls.mode !== 'walk') return;
     dispatchEvent(new CustomEvent('harare:hero-burst', { detail: { x: me.x, y: me.y - 0.16, z: me.z, kind: 'land' } }));
     this.blast(me.x, me.y - 0.16, me.z, 0.32);
   },
@@ -296,9 +312,101 @@ export default {
     }
   },
 
+  // The hero model's own up (head) direction: world up standing, tipped forward lying along a flight
+  bodyUp() {
+    const model = this.ctx.controls.player.imported?.root?.children[0];
+    if (!model) return this.v.b.set(0, 1, 0);
+    model.getWorldQuaternion(this.v.q2);
+    return this.v.b.set(0, 1, 0).applyQuaternion(this.v.q2);
+  },
+
+  // Arms by hand on top of the animation clips (the model has no lift or throw clips): each upper and lower arm is
+  // turned in world space so it points the way the pose wants, blended in by weight
+  pose(dt, me) {
+    const c = this.ctx.controls, model = c.player.imported?.root;
+    if (!model || !me) return;
+    if (this.bonesOf !== model) {
+      this.bonesOf = model;
+      const by = {};
+      model.traverse((o) => o.isBone && (by[o.name] = o));
+      this.bones = by.upperarm_l && by.lowerarm_l && by.hand_l && by.upperarm_r && by.lowerarm_r && by.hand_r && by.neck_01 ? by : null;
+    }
+    const B = this.bones;
+    this.carryW = (this.carryW || 0) + ((this.held?.state === 'held' ? 1 : 0) - (this.carryW || 0)) * (1 - Math.exp(-dt * 10));
+    if (this.throwT > 0) this.throwT -= dt;
+    // Slam dive: one fist driven down at the street, the other arm out for balance
+    const diving = c.mode === 'fly' && c.heli.slam && c.heli.phase !== 'impact';
+    this.diveW = (this.diveW || 0) + ((diving ? 1 : 0) - (this.diveW || 0)) * (1 - Math.exp(-dt * 12));
+    const throwing = this.throwT > 0, w = throwing ? 1 : this.carryW;
+    if (!B || !c.player.visible) return;
+    const T = this.T, up = this.bodyUp().clone(), fwd = new T.Vector3(Math.sin(me.yaw), 0, Math.cos(me.yaw));
+    // Ground pound: fists raised together overhead on the way up, driven down in front on landing
+    if (this.stompA > 0) this.stompA -= dt;
+    this.windW = (this.windW || 0) + ((this.pound ? 1 : 0) - (this.windW || 0)) * (1 - Math.exp(-dt * 14));
+    const sk = this.stompA > 0 ? 1 - this.stompA / 0.5 : 1;
+    const punchW = this.stompA > 0 ? Math.min(1, (1 - sk) * 2.5) : 0, armW = Math.max(punchW, this.windW);
+    if (armW > 0.01 && w < 0.01) {
+      model.updateMatrixWorld(true);
+      const dir = punchW > this.windW ? new T.Vector3(0, -1, 0).addScaledVector(fwd, 0.55).normalize() : new T.Vector3(0, 1, 0).addScaledVector(fwd, 0.25).normalize();
+      const mid = B.neck_01.getWorldPosition(new T.Vector3());
+      for (const side of ['l', 'r']) {
+        const upper = B['upperarm_' + side], inward = mid.clone().sub(upper.getWorldPosition(new T.Vector3())).setY(0).normalize();
+        this.point(upper, B['lowerarm_' + side], dir.clone().addScaledVector(inward, 0.25).normalize(), armW);
+        this.point(B['lowerarm_' + side], B['hand_' + side], dir.clone().addScaledVector(inward, 0.4).normalize(), armW);
+      }
+      return;
+    }
+    if (this.diveW > 0.01 && w < 0.01) {
+      model.updateMatrixWorld(true);
+      const down = new T.Vector3(0, -1, 0), neck = B.neck_01.getWorldPosition(new T.Vector3());
+      const outR = B.upperarm_r.getWorldPosition(new T.Vector3()).sub(neck).setY(0).normalize();
+      const outL = B.upperarm_l.getWorldPosition(new T.Vector3()).sub(neck).setY(0).normalize();
+      this.point(B.upperarm_r, B.lowerarm_r, down.clone().addScaledVector(outR, 0.15).normalize(), this.diveW);
+      this.point(B.lowerarm_r, B.hand_r, down, this.diveW);
+      this.point(B.upperarm_l, B.lowerarm_l, outL.clone().addScaledVector(up, 0.35).normalize(), this.diveW);
+      this.point(B.lowerarm_l, B.hand_l, outL.clone().addScaledVector(up, 0.7).normalize(), this.diveW);
+      return;
+    }
+    if (w < 0.01) return;
+    // Throw: from overhead, both arms whip forward and down past the shoulders
+    let aim = up;
+    if (throwing) {
+      const k = 1 - Math.max(0, this.throwT) / 0.42, e = k * k * (3 - 2 * k);
+      aim = up.clone().multiplyScalar(1 - e).addScaledVector(fwd, 1.2 * e).addScaledVector(new T.Vector3(0, -1, 0), 0.5 * e).normalize();
+    }
+    model.updateMatrixWorld(true);
+    const neck = B.neck_01.getWorldPosition(new T.Vector3());
+    for (const side of ['l', 'r']) {
+      const upper = B['upperarm_' + side], lower = B['lowerarm_' + side], hand = B['hand_' + side];
+      const shoulder = upper.getWorldPosition(new T.Vector3()), out = shoulder.clone().sub(neck);
+      out.addScaledVector(aim, -out.dot(aim)).normalize(); // outward from the neck, square to the aim
+      // Carrying: reach for the underside of the car, palms under its floor either side of the middle
+      let reach = aim;
+      if (!throwing && this.held?.state === 'held') {
+        const g = this.held.group.position;
+        reach = new T.Vector3(g.x, g.y - this.held.half.y, g.z).addScaledVector(out, 0.25).sub(shoulder).normalize();
+      }
+      this.point(upper, lower, reach.clone().addScaledVector(out, 0.18).normalize(), w);
+      this.point(lower, hand, reach.clone().addScaledVector(out, 0.03).normalize(), w);
+    }
+  },
+  point(bone, child, dir, w) {
+    const T = this.T, from = bone.getWorldPosition(new T.Vector3()), cur = child.getWorldPosition(new T.Vector3()).sub(from).normalize();
+    const world = bone.getWorldQuaternion(new T.Quaternion()), parent = bone.parent.getWorldQuaternion(new T.Quaternion());
+    const target = new T.Quaternion().setFromUnitVectors(cur, dir).multiply(world);
+    bone.quaternion.slerp(parent.invert().multiply(target), w);
+    bone.updateMatrixWorld(true);
+  },
+
   update(dt) {
     dt = Math.min(dt, 0.05);
     const c = this.ctx.controls, me = this.hero(), T = this.T, v = this.v;
+    if (this.pound && (c.mode !== 'walk' || (!c.walk.air && c.walk.vy <= 0))) {
+      this.pound = false;
+      if (c.mode === 'walk') (this.stompA = 0.5), c.player.imported?.stomp?.(), this.stompHit();
+    }
+    this.pose(dt, me);
+    if ((this.scanT = (this.scanT || 0) - dt) < 0) (this.scanT = 0.15), (this.ready = this.held ? null : this.target());
     if (this.held && !me) this.throw(); // switched to the taxi or the map with a car overhead: drop it
     const carry = this.held ? Math.min(2.6, Math.max(1, this.held.half.z / 2.45)) : 0; // a bus needs more room than a Fit
     c.rig.carry = (c.rig.carry || 0) + (carry - (c.rig.carry || 0)) * (1 - Math.exp(-dt * 4));
@@ -317,8 +425,12 @@ export default {
         // Rise from the street into a press overhead, then ride along above the hero's head
         p.lift = Math.min(1, p.lift + dt / 0.45);
         const k = p.lift * p.lift * (3 - 2 * p.lift);
-        const ahead = p.half.z * 0.55; // pressed up and forward: the hero stays in view below its tail
-        v.a.set(me.x + Math.sin(me.yaw) * ahead, me.y + 2.05 + p.half.y, me.z + Math.cos(me.yaw) * ahead);
+        // Pressed overhead along the body's head direction: straight up on foot, out in front when flying flat out
+        // (Superman-style); a little forward so the hero stays in view below its tail
+        const up = this.bodyUp(), ahead = p.half.z * 0.3 * Math.max(0, up.y);
+        v.a.set(me.x, me.y + 1, me.z).addScaledVector(up, 0.82 + p.half.y);
+        v.a.x += Math.sin(me.yaw) * ahead;
+        v.a.z += Math.cos(me.yaw) * ahead;
         g.position.lerpVectors(p.from, v.a, k);
         v.q.setFromEuler(v.e.set(0, me.yaw, 0)); // carried front-to-back: from the chase camera you see its tail, not a wall
         g.quaternion.slerpQuaternions(p.fromQ, v.q, k);
@@ -461,7 +573,7 @@ export default {
       el.className = 'power-toast';
       el.setAttribute('role', 'status');
       const st = document.createElement('style');
-      st.textContent = `.power-toast{position:fixed;left:50%;top:58%;transform:translateX(-50%);z-index:30;padding:8px 14px;border-radius:999px;background:rgba(10,14,18,.78);color:#f3efe6;font:600 13px/1.2 system-ui,sans-serif;pointer-events:none;opacity:0;transition:opacity .25s}.power-toast.on{opacity:1}`;
+      st.textContent = `.power-toast{position:fixed;left:50%;top:30%;transform:translateX(-50%);z-index:30;padding:8px 14px;border-radius:999px;background:rgba(10,14,18,.78);color:#f3efe6;font:600 13px/1.2 system-ui,sans-serif;pointer-events:none;opacity:0;transition:opacity .25s}.power-toast.on{opacity:1}`;
       document.head.appendChild(st);
       document.body.appendChild(el);
     }

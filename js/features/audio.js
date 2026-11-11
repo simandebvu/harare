@@ -478,6 +478,8 @@ function setMuted(m) {
 const fwd = { x: 0, y: 0, z: 0 };
 export default {
   init(ctx) {
+    // Other features (heat vision) build their own sounds on the same graph and respect the mute switch
+    ctx.sound = { get on() { return !!M && !muted && M.ac.state === 'running'; }, get ac() { return M?.ac; }, get out() { return M?.master; } };
     C = ctx;
     try {
       // Silent until the visitor turns sound on (N or the speaker button); that choice is remembered

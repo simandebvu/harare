@@ -38,6 +38,13 @@ export default {
     this.flare = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(canvas), transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
     this.flare.visible = false;
     ctx.scene.add(this.flare);
+    this.eyeGlow = [0, 1].map(() => {
+      const s = new T.Sprite(this.flare.material);
+      s.visible = false;
+      s.renderOrder = 7;
+      ctx.scene.add(s);
+      return s;
+    });
     // Scorch marks: a ring of reused discs, fading out once they are old (the city repairs itself)
     const markGeo = new T.CircleGeometry(0.5, 20);
     this.marks = Array.from({ length: MARKS }, () => {
@@ -50,6 +57,7 @@ export default {
     this.markNext = 0;
     this.lastMark = new T.Vector3(1e9, 0, 0);
     this.fires = [];
+    this.treeHeat = new Map();
     this.heat = new Map(); // 2 m cells of street or wall → seconds under the beam
     this.reticle = document.createElement('div');
     this.reticle.className = 'heat-reticle';
@@ -67,6 +75,7 @@ export default {
   // Eyes: the hero model's head bone when there is one (it lies flat in flight), else a standing eye height
   eyes(me) {
     const c = this.ctx.controls, T = this.T;
+    if (this.headOf !== c.player.imported?.root) (this.head = undefined), (this.headOf = c.player.imported?.root);
     if (this.head === undefined && c.player.imported) {
       this.head = null;
       c.player.imported.root?.traverse((o) => !this.head && o.isBone && /head$/i.test(o.name) && (this.head = o));
@@ -87,10 +96,28 @@ export default {
     for (const car of tr.cars) if (car.init && !(car.away > 0) && near(car.x, groundY(car.x, car.z) + 1, car.z, car.len / 2)) cands.push({ car, parked: false, base: groundY(car.x, car.z) + 0.22 });
     for (const car of tr.parkedCars) if (!(car.away > 0) && near(car.x, car.y + 1, car.z, car.len / 2)) cands.push({ car, parked: true, base: car.y });
     for (const p of P.props) if (p !== P.held && near(p.group.position.x, p.group.position.y, p.group.position.z, Math.max(p.half.x, p.half.z))) cands.push({ prop: p });
+    // People stop the beam too (it only startles them: cartoon rules), and so do tree crowns, which catch fire
+    const ppl = this.ctx.people;
+    for (const list of [ppl.walkers, ppl.loiter]) for (const q of list) {
+      if (q.hidden || !Number.isFinite(q.x)) continue;
+      const gy = groundY(q.x, q.z);
+      if (near(q.x, gy + 0.9, q.z, 0.6)) cands.push({ person: q, gy });
+    }
+    const C = this.ctx.trees?.crowns;
+    if (C) for (let i = 0; i < C.N; i++) if (!C.gone[i] && near(C.cx[i], C.cy[i], C.cz[i], C.cr[i])) cands.push({ tree: i, r: C.cr[i] * 0.75 });
     const pt = this.v.d;
     for (let t = skip; t < RANGE; t += STEP) {
       pt.copy(dir).multiplyScalar(t).add(from);
       for (const k of cands) {
+        if (k.person) {
+          const q = k.person;
+          if ((pt.x - q.x) ** 2 + (pt.z - q.z) ** 2 < 0.12 && pt.y > k.gy && pt.y < k.gy + 1.8) return { point: pt.clone(), normal: dir.clone().negate(), target: k };
+          continue;
+        }
+        if (k.tree !== undefined) {
+          if ((pt.x - C.cx[k.tree]) ** 2 + (pt.y - C.cy[k.tree]) ** 2 + (pt.z - C.cz[k.tree]) ** 2 < k.r * k.r) return { point: pt.clone(), normal: dir.clone().negate(), target: k };
+          continue;
+        }
         if (k.prop) {
           const g = k.prop.group.position, r = Math.max(k.prop.half.x, k.prop.half.y, k.prop.half.z) * 0.8;
           if (pt.distanceToSquared(g) < r * r) return { point: pt.clone(), normal: dir.clone().negate(), target: k };
@@ -105,8 +132,13 @@ export default {
       if (c.blocked(pt.x, pt.z, pt.y)) {
         // Back out to the wall face; the normal faces back along the beam (good enough for a soft round mark)
         pt.addScaledVector(dir, -STEP * 0.5);
-        const n = dir.clone().setY(0).negate().normalize();
-        return { point: pt.clone(), normal: n, surface: true };
+        // Which way the wall faces: probe either side; a corner (or no answer) falls back to facing the beam
+        const b = (x, z) => (c.blocked(x, z, pt.y) ? 1 : 0), e = 0.35;
+        const n = new this.T.Vector3(b(pt.x - e, pt.z) - b(pt.x + e, pt.z), 0, b(pt.x, pt.z - e) - b(pt.x, pt.z + e));
+        const flat = n.lengthSq() > 0; // 2 = a diagonal wall or an outside corner
+        if (!flat) n.copy(dir).setY(0).negate();
+        n.normalize();
+        return { point: pt.clone(), normal: n, surface: true, wall: true, corner: !flat || Math.abs(n.x * n.z) > 0.1 };
       }
     }
     return { point: pt.copy(dir).multiplyScalar(RANGE).add(from).clone(), normal: null };
@@ -119,18 +151,30 @@ export default {
     this.reticle.classList.toggle('on', active);
     this.updateMarks(dt);
     this.updateFires(dt);
+    this.hum(active, dt);
     if (!active) {
       for (const b of this.beams) b.visible = false;
+      for (const s of this.eyeGlow) s.visible = false;
       this.flare.visible = false;
+      this.headW = 0;
       return;
     }
     const cam = this.ctx.camera, dir = cam.getWorldDirection(new T.Vector3());
     const skip = Math.max(0.5, v.b.set(me.x, me.y + 1, me.z).sub(cam.position).dot(dir) + 0.8); // start past the hero
     const hit = (this.last = this.aim(cam.position.clone(), dir, skip));
+    // On foot the hero squares up to the target while firing, so the beams leave the face and not over a shoulder
+    if (c.mode === 'walk') {
+      const want = Math.atan2(hit.point.x - me.x, hit.point.z - me.z), w = c.walk;
+      w.yaw += Math.atan2(Math.sin(want - w.yaw), Math.cos(want - w.yaw)) * (1 - Math.exp(-dt * 10));
+    }
+    this.lookAt(hit.point, dt);
     const eye = this.eyes(me).clone(), right = v.b.set(Math.cos(me.yaw), 0, -Math.sin(me.yaw));
     this.glowMat.opacity = 0.35 + Math.random() * 0.2;
     this.beams.forEach((b, i) => {
       const from = eye.clone().addScaledVector(right, i ? 0.034 : -0.034), d = hit.point.clone().sub(from), len = d.length();
+      this.eyeGlow[i].position.copy(from);
+      this.eyeGlow[i].visible = true;
+      this.eyeGlow[i].scale.setScalar(0.16 + Math.random() * 0.05);
       b.position.copy(from);
       b.quaternion.setFromUnitVectors(v.up, d.divideScalar(len || 1));
       b.scale.set(1, len, 1);
@@ -145,6 +189,20 @@ export default {
     for (let k = 0; k < 3; k++) P.fire.emit(h.x, h.y + 0.1, h.z, j() * 5 + hit.normal.x * 3, 2 + Math.random() * 4, j() * 5 + hit.normal.z * 3, 0.35 + Math.random() * 0.3, 0.18, [1, 0.6, 0.25], 1, 0, 0.6, -14);
     if (Math.random() < 0.3) P.smoke.emit(h.x, h.y + 0.2, h.z, j() * 0.4, 1 + Math.random(), j() * 0.4, 1.8, 0.7, [0.25, 0.24, 0.24], 0.4, 2, 1, 0.4);
     if ((this.scareT = (this.scareT || 0) - dt) < 0) (this.scareT = 0.3), this.ctx.people.scare(h.x, h.z, 9, 0);
+    if (hit.target?.person) {
+      if ((this.zapT = (this.zapT || 0) - dt) < 0) (this.zapT = 0.4), this.ctx.people.scare(h.x, h.z, 2.5, 0.8);
+      return;
+    }
+    if (hit.target?.tree !== undefined) {
+      const i = hit.target.tree, C = this.ctx.trees.crowns;
+      this.treeHeat.set(i, (this.treeHeat.get(i) || 0) + dt);
+      if (this.treeHeat.get(i) > 0.8 && !this.fires.some((f) => f.tree === i)) {
+        this.treeHeat.delete(i);
+        if (this.fires.length >= FIRES) this.fires.shift();
+        this.fires.push({ p: new this.T.Vector3(C.cx[i], C.cy[i] - C.cr[i] * 0.2, C.cz[i]), n: v.up.clone(), age: 0, t: 0, tree: i, spread: C.cr[i] * 0.9, big: 1.8 });
+      }
+      return;
+    }
     if (hit.target) {
       const k = hit.target, obj = k.prop || k.car;
       obj.heat = (obj.heat || 0) + dt;
@@ -155,7 +213,7 @@ export default {
       }
       return;
     }
-    if (h.distanceTo(this.lastMark) > 0.45) this.mark(h, hit.normal);
+    if (h.distanceTo(this.lastMark) > 0.45) this.mark(h, hit.normal, hit.corner ? 0.45 : hit.wall ? 0.75 : 1);
     const key = Math.round(h.x / 2) + ',' + Math.round(h.y / 2) + ',' + Math.round(h.z / 2);
     const t = (this.heat.get(key) || 0) + dt;
     this.heat.set(key, t);
@@ -167,12 +225,68 @@ export default {
     if (this.heat.size > 400) this.heat.clear();
   },
 
-  mark(p, n) {
+  // Turn the head toward what the beams are hitting (on top of the animation), within what a neck can do
+  lookAt(target, dt) {
+    const head = this.head, T = this.T;
+    if (!head || !this.ctx.controls.player.visible) return;
+    this.headW = Math.min(0.9, (this.headW || 0) + dt * 6);
+    const model = this.ctx.controls.player.imported.root.children[0];
+    const fwd = new T.Vector3(0, 0, 1).applyQuaternion(model.getWorldQuaternion(new T.Quaternion()));
+    const want = target.clone().sub(head.getWorldPosition(new T.Vector3())).normalize();
+    const turn = new T.Quaternion().setFromUnitVectors(fwd, want), angle = 2 * Math.acos(Math.min(1, Math.abs(turn.w)));
+    if (angle > 1.1) turn.slerp(new T.Quaternion(), 1 - 1.1 / angle);
+    const world = turn.multiply(head.getWorldQuaternion(new T.Quaternion()));
+    head.quaternion.slerp(head.parent.getWorldQuaternion(new T.Quaternion()).invert().multiply(world), this.headW);
+    head.updateMatrixWorld(true);
+  },
+
+  // A crackling electric hum while firing, louder and hissier where the beam is burning something
+  hum(active, dt) {
+    const S = this.ctx.sound;
+    if (!S?.ac || (!this.snd && !active)) return;
+    if (!this.snd) {
+      const ac = S.ac, out = ac.createGain();
+      out.gain.value = 0;
+      out.connect(S.out);
+      const a = ac.createOscillator(), b = ac.createOscillator(), tone = ac.createBiquadFilter();
+      a.type = 'sawtooth';
+      a.frequency.value = 92;
+      b.type = 'square';
+      b.frequency.value = 185.5;
+      tone.type = 'lowpass';
+      tone.frequency.value = 1100;
+      const bg = ac.createGain();
+      bg.gain.value = 0.35;
+      a.connect(tone);
+      b.connect(bg).connect(tone);
+      tone.connect(out);
+      const len = ac.sampleRate, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.08 ? 1 : 0.25);
+      const noise = ac.createBufferSource(), band = ac.createBiquadFilter(), hiss = ac.createGain();
+      noise.buffer = buf;
+      noise.loop = true;
+      band.type = 'bandpass';
+      band.frequency.value = 3200;
+      band.Q.value = 0.7;
+      hiss.gain.value = 0;
+      noise.connect(band).connect(hiss).connect(out);
+      a.start();
+      b.start();
+      noise.start();
+      this.snd = { out, hiss, a };
+    }
+    const on = active && S.on, t = S.ac.currentTime, burning = on && this.last?.normal ? 1 : 0;
+    this.snd.out.gain.setTargetAtTime(on ? 0.16 : 0, t, on ? 0.03 : 0.08);
+    this.snd.hiss.gain.setTargetAtTime(burning * 0.9, t, 0.05);
+    if (on) this.snd.a.frequency.setTargetAtTime(88 + Math.random() * 10, t, 0.02);
+  },
+
+  mark(p, n, size = 1) {
     const m = this.marks[this.markNext];
     this.markNext = (this.markNext + 1) % MARKS;
     m.position.copy(p).addScaledVector(n, 0.03);
     m.lookAt(this.v.a.copy(m.position).add(n));
-    m.scale.setScalar(0.7 + Math.random() * 0.5);
+    m.scale.setScalar((0.7 + Math.random() * 0.5) * size);
     m.userData.age = 0;
     m.visible = true;
     this.lastMark.copy(p);
@@ -201,8 +315,9 @@ export default {
       if ((f.t -= dt) > 0) continue;
       f.t = 0.06;
       const j = () => Math.random() - 0.5, p = f.p;
-      P.fire.emit(p.x + j() * 0.9 + f.n.x * 0.3, p.y + 0.1, p.z + j() * 0.9 + f.n.z * 0.3, j() * 0.3, 1.2 + Math.random() * 1.4, j() * 0.3, 0.45 + Math.random() * 0.35, (0.6 + Math.random() * 0.5) * s, [1, 0.45 + Math.random() * 0.3, 0.1], 0.85, 0.3, 1.5, 2);
-      if (Math.random() < 0.35) P.smoke.emit(p.x + j(), p.y + 1.2, p.z + j(), j() * 0.3, 1.5, j() * 0.3, 2.8, 1.2 * s, [0.14, 0.14, 0.15], 0.5, 2.2, 1, 0.5);
+      const sp = f.spread || 0.9, big = f.big || 1;
+      for (let k = 0; k < big; k++) P.fire.emit(p.x + j() * sp * 2 + f.n.x * 0.3, p.y + 0.1 + j() * sp * 0.6, p.z + j() * sp * 2 + f.n.z * 0.3, j() * 0.3, 1.2 + Math.random() * 1.4, j() * 0.3, 0.45 + Math.random() * 0.35, (0.6 + Math.random() * 0.5) * s * Math.sqrt(big), [1, 0.45 + Math.random() * 0.3, 0.1], 0.85, 0.3, 1.5, 2);
+      if (Math.random() < 0.35 * big) P.smoke.emit(p.x + j() * sp, p.y + 1.2, p.z + j() * sp, j() * 0.3, 1.5, j() * 0.3, 2.8, 1.2 * s * big, [0.14, 0.14, 0.15], 0.5, 2.2, 1, 0.5);
     }
   },
 };

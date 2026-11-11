@@ -401,6 +401,8 @@ export function buildTrees(scene, DATA, blocked) {
   return {
     count: N,
     group,
+    // crown centres and radii (heat vision aims at them)
+    crowns: { cx, cy, cz, cr, gone, N },
     // Remove every tree within r of (x, z) from now on; returns how many went
     clearAround(x, z, r) {
       let n = 0;

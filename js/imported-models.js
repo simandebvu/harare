@@ -45,11 +45,13 @@ export async function loadPlayerModel(character = 'male') {
   actions.jump.setLoop(THREE.LoopOnce,1);actions.jump.clampWhenFinished=true;
   actions.takeoff.setEffectiveTimeScale(0);actions.touchdown.setEffectiveTimeScale(0);
   let wasAirborne=false;
-  let climbTilt = 0, moving = 0, running = 0, jumping = 0, gaitPhase=0, flightBlend=0, cruise=0, bank=0, clock=0, brace=0, sequenceWeight=0, lastSequence='takeoff';
+  let climbTilt = 0, moving = 0, running = 0, jumping = 0, gaitPhase=0, flightBlend=0, cruise=0, bank=0, clock=0, brace=0, sequenceWeight=0, lastSequence='takeoff', slamW=0, stompT=0;
   return {
     root,
     get gait() { return gaitPhase; },
     setOutfit: (name) => costume.set(name),
+    // On-foot stomp (powers): the superhero-landing crouch, played on the spot
+    stomp() { stompT = 1e-4; },
     update(dt, x, y, z, yaw, speed, airborne, lean, powered=false, flightAction=null) {
       // Smooth clip weights; leaving the ground does not snap back to an idle pose.
       const k = 1 - Math.exp(-12 * dt);
@@ -77,13 +79,23 @@ export async function loadPlayerModel(character = 'male') {
       actions.hover.setEffectiveTimeScale(.8);
       actions.flight.setEffectiveTimeScale(.75);
       for(const name of ['idle','walk','run','jump','hover','flight'])actions[name].setEffectiveWeight(actions[name].getEffectiveWeight()*(1-sequenceWeight));
-      actions.brace.setEffectiveWeight(0);
+      // Slam dive (powers): braced, feet first, all the way down to the touchdown
+      slamW+=((powered&&flightAction?.slam&&stage!=='impact'?1:0)-slamW)*(1-Math.exp(-dt*10));
+      for(const name of ['idle','walk','run','jump','hover','flight'])actions[name].setEffectiveWeight(actions[name].getEffectiveWeight()*(1-slamW));
+      actions.brace.setEffectiveWeight(slamW);
       // Advance cinematic clips from the same clock as the actual launch/impact physics.
       actions.takeoff.setEffectiveWeight(launching?sequenceWeight:0);
       actions.touchdown.setEffectiveWeight(landing?sequenceWeight:0);
       if(!inSequence && sequenceWeight>0){const finish=lastSequence==='touchdown'?actions.idle:actions.hover;finish.setEffectiveWeight(finish.getEffectiveWeight()+sequenceWeight);}
       if(launching)actions.takeoff.time=Math.min(1,(stage==='charge'?flightAction.time:.55+flightAction.time)/1.2)*actions.takeoff.getClip().duration;
       if(landing)actions.touchdown.time=Math.min(1,flightAction.time/.72)*actions.touchdown.getClip().duration;
+      if(stompT>0){
+        stompT+=dt;const t=stompT/.75,w=t<1?Math.min(1,t*7,(1-t)*5):0;
+        for(const name of ['idle','walk','run','jump'])actions[name].setEffectiveWeight(actions[name].getEffectiveWeight()*(1-w));
+        actions.touchdown.setEffectiveWeight(Math.max(w,actions.touchdown.getEffectiveWeight()));
+        actions.touchdown.time=(t<.25?.3+t*.72:t<.5?.48:Math.min(.999,.48+(t-.5)*1.04))*actions.touchdown.getClip().duration;
+        if(t>=1)stompT=0;
+      }
       actions.walk.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 1.5, 0.5, 2));
       actions.run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 4.2, 0.65, 1.6));
       // Keep both locomotion clips at the same footfall phase during crossfades.

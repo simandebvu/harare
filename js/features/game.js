@@ -155,6 +155,7 @@ function setTouchActions(ctx, mode) {
   for (const [a, label] of TOUCH_ACTIONS[mode]) {
     const b = el('button', 'gm-act', label);
     b.type = 'button';
+    b.dataset.act = a;
     const set = (on) => {
       b.classList.toggle('on', on);
       if (a === 'run') T.run = on;
