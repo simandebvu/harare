@@ -5,6 +5,7 @@
 // buildings.spots. The dense kerbside layer (painted kerbs, hydrants, meters, ZESA boxes, road signs, tuckshops, ATMs,
 // scaffolding, overhead lines) lives in street-clutter.js.
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { addOverhead } from '../overheads.js';
 import { Grid, segDist, coreWeight, rng, groundY } from '../util.js';
 import { buildClutter } from './street-clutter.js';
 
@@ -408,6 +409,8 @@ export default {
     for (const b of bollards) solid(b, 0, 0, 0.12, 0.12, 0.9);
     for (const p of planters) solid(p, 0, 0, 0.7, 0.7, 0.55);
     for (const sh of shelters) solid(sh, 0, -0.6, 1.98, 0.05, 2.55), solid(sh, -1.95, -0.1, 0.05, 0.55, 2.55);
+    // roof: local x along the shelter, +z toward the road (offset 0.1)
+    for (const sh of shelters) addOverhead(sh.x + Math.sin(sh.yaw) * 0.1, sh.z + Math.cos(sh.yaw) * 0.1, Math.cos(sh.yaw), -Math.sin(sh.yaw), 2.1, 0.9, sh.y + 2.5);
     console.log(`[harare] furniture: ${posts.length} street-name posts, ${bins.length} bins, ${shelters.length} shelters, ${booths.length} booths, ${umbrellas.length} airtime umbrellas, ${bollards.length} bollards, ${planters.length} planters, ${huts.length} guard huts, ${dishes.length} dishes; ${clutter}`);
   },
   update() {},

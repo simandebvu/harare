@@ -84,7 +84,7 @@ body.gm-has-touch .powers-strip{display:none}
     // touch buttons mirror it
     const btn = document.querySelector(`.gm-act[data-act="${k}"]`);
     if (btn) {
-      const label = k === 'grab' ? (state === 'live' ? 'Throw' : 'Lift') : btn.textContent;
+      const label = k === 'heat' ? 'Heat' : key.replace(/<kbd>.*?<\/kbd>/, ''); // Lift / Throw / Catch, Slam / Stomp / Set down
       if (btn.textContent !== label) btn.textContent = label;
       btn.classList.toggle('ready', state === 'ready');
       btn.classList.toggle('live', state === 'live');
@@ -101,9 +101,11 @@ body.gm-has-touch .powers-strip{display:none}
     if (!me) return;
     const fly = c.mode === 'fly';
     if (P.held) this.set('grab', '<kbd>G</kbd>Throw', `Throw ${NAMES[P.held.type] || 'car'}`, 'live');
+    else if (P.ready?.prop) this.set('grab', '<kbd>G</kbd>Catch', 'Catch it!', 'ready');
     else if (P.ready) this.set('grab', '<kbd>G</kbd>Lift', `Lift ${NAMES[P.ready.car.type || 'kombi'] || 'car'}`, 'ready');
     else this.set('grab', '<kbd>G</kbd>Lift', fly ? 'Land first' : 'Get close', 'off');
-    if (fly) {
+    if (P.held) this.set('slam', '<kbd>X</kbd>Set down', 'Put it down', '');
+    else if (fly) {
       const h = c.heli, high = h.y - c.surfaceY(h.x, h.z, h.y) >= 4;
       this.set('slam', '<kbd>X</kbd>Slam', h.slam ? 'Slam!' : high ? 'Dive' : 'Go higher', h.slam ? 'live' : high ? '' : 'off');
     } else this.set('slam', '<kbd>X</kbd>Stomp', P.pound || P.stompA > 0 ? 'Stomp!' : 'Stomp', P.pound || P.stompA > 0 ? 'live' : '');

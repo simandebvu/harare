@@ -7,6 +7,7 @@
 import { gltfLoader } from '../gltf-loader.js';
 import { vehicleGeometry, VEHICLE_TYPES, ATLAS, ROUTES } from '../vehicles.js';
 import { groundY } from '../util.js';
+import { overheadAt } from '../overheads.js';
 
 const MAX_PROPS = 10, GRAVITY = 22, ROAD_Y = 0.22, WRECK_LIFE = 14, GRAB_REACH = 2.6;
 const GLB = { fit: 'fit', sedan: 'sedan', police: 'police', kombi: 'hiace' };
@@ -46,6 +47,11 @@ export default {
     });
   },
 
+  // Chaos meter (features/chaos.js): positive for damage, negative for rescues
+  chaos(n, kind, label) {
+    dispatchEvent(new CustomEvent('harare:chaos', { detail: { n, kind, label } }));
+  },
+
   // --- the hero ------------------------------------------------------------------------------------------------------
   hero() {
     const c = this.ctx.controls;
@@ -57,13 +63,80 @@ export default {
   grab() {
     if (this.held) return this.throw();
     const best = this.target();
+    if (best?.prop) return this.catchProp(best.prop);
     if (!best) return this.hero() && this.toast(this.ctx.controls.mode === 'fly' ? 'Fly down next to a car to lift it' : 'Walk up to a car to lift it');
+    const type = best.car.type || 'kombi', T = VEHICLE_TYPES[type];
+    const half = this.pool[type]?.[0]?.half || { x: T.width / 2, y: type === 'zupco' ? 1.6 : type === 'kombi' ? 1.05 : 0.8, z: T.len / 2 };
+    if (!this.roomAbove(this.hero(), half)) return this.toast('No room overhead · step out into the open');
     const p = this.spawnProp(best.car, best.parked, best.base);
     if (!p) return;
     p.state = 'held';
     p.lift = 0;
     this.held = p;
     this.say('lift');
+    this.chaos(1, 'lift');
+  },
+
+  // Rescue: snatch a car out of the air before it lands
+  catchProp(p) {
+    p.state = 'held';
+    p.lift = 0.4;
+    p.from.copy(p.group.position);
+    p.fromQ.copy(p.group.quaternion);
+    p.vel.set(0, 0, 0);
+    p.spin.set(0, 0, 0);
+    p.burn = 0;
+    this.held = p;
+    this.say('lift');
+    this.chaos(-10, 'rescue', 'Caught it!');
+  },
+
+  // Rescue: X while carrying sets the car down gently in front of you, upright and repaired
+  setDown() {
+    const p = this.held, me = this.hero(), c = this.ctx.controls;
+    if (!p || !me) return;
+    this.held = null;
+    const fx = Math.sin(me.yaw), fz = Math.cos(me.yaw), d = 1.2 + p.half.z;
+    let x = me.x + fx * d, z = me.z + fz * d;
+    if (c.blocked(x, z, me.y + 1)) (x = me.x), (z = me.z);
+    const top = c.surfaceY(x, z, me.y + 2), floor = top + (top <= groundY(x, z) + 0.05 ? ROAD_Y : 0);
+    const wreck = p.damage > 0;
+    p.body.recolor(p.color);
+    p.damage = 0;
+    p.burn = 0;
+    p.fromQ = p.group.quaternion.clone();
+    p.restQ = new this.T.Quaternion().setFromEuler(new this.T.Euler(0, me.yaw, 0));
+    p.restY = floor + p.half.y;
+    p.restLow = p.half.y;
+    p.fromP = p.group.position.clone();
+    p.restP = new this.T.Vector3(x, p.restY, z);
+    p.settle = 0;
+    p.state = 'rest';
+    p.life = 3;
+    this.chaos(wreck ? -8 : -3, 'rescue', wreck ? 'Repaired' : 'Put it back');
+    this.toastEl?.classList.remove('on');
+  },
+
+  // Where a carried car sits: pressed overhead along the body's head direction (straight up on foot, out in front when
+  // flying flat out, Superman-style), a little forward so the hero stays in view below its tail
+  heldCentre(me, half, out) {
+    const up = this.bodyUp(), ahead = half.z * 0.3 * Math.max(0, up.y);
+    out.set(me.x, me.y + 1, me.z).addScaledVector(up, 0.82 + half.y);
+    out.x += Math.sin(me.yaw) * ahead;
+    out.z += Math.cos(me.yaw) * ahead;
+    return out;
+  },
+  // Is there room for a car of these half extents overhead? Walls, and the pavement roofs nothing else collides
+  // with (shop verandahs and canopies, rank and bus shelters: js/overheads.js)
+  roomAbove(me, half) {
+    const c = this.ctx.controls, ctr = this.heldCentre(me, half, new this.T.Vector3());
+    const sn = Math.sin(me.yaw), cs = Math.cos(me.yaw), lo = ctr.y - half.y - 0.4, hi = ctr.y + half.y;
+    for (const [a, b] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [0, 1], [0, -1]]) {
+      const lx = a * half.x * 0.9, lz = b * half.z * 0.9, px = ctr.x + lx * cs + lz * sn, pz = ctr.z - lx * sn + lz * cs;
+      if (overheadAt(px, pz, lo, hi) !== null) return false;
+      if (c.blocked(px, pz, ctr.y - half.y * 0.5) || c.blocked(px, pz, hi - 0.1)) return false;
+    }
+    return true;
   },
 
   // The vehicle within arm's reach of the hero, if any (also drives the "Lift" prompt)
@@ -84,6 +157,12 @@ export default {
     };
     for (const car of tr.cars) consider(car, false);
     for (const car of tr.parkedCars) consider(car, true);
+    // A car in the air close by can be caught (a rescue), and that beats lifting a parked one
+    for (const p of this.props) {
+      if (p.state !== 'air' || p === this.held) continue;
+      const g = p.group.position, d = Math.hypot(g.x - me.x, g.y - (me.y + 1.5), g.z - me.z) - Math.max(p.half.x, p.half.z);
+      if (d < 5) return { prop: p };
+    }
     return best;
   },
 
@@ -105,6 +184,7 @@ export default {
   slam() {
     const c = this.ctx.controls, me = this.hero();
     if (!me) return;
+    if (this.held) return this.held.state === 'held' && this.held.lift >= 1 ? this.setDown() : undefined;
     if (c.mode === 'fly') {
       const h = c.heli, floor = c.surfaceY(h.x, h.z, h.y);
       if (['charge', 'impact'].includes(h.phase) || h.slam) return;
@@ -126,6 +206,19 @@ export default {
     const me = this.hero();
     if (!me || this.ctx.controls.mode !== 'walk') return;
     dispatchEvent(new CustomEvent('harare:hero-burst', { detail: { x: me.x, y: me.y - 0.16, z: me.z, kind: 'land' } }));
+    // The blast of air snuffs out fires close by (a rescue) before it does any damage of its own
+    let out = 0;
+    const HV = this.ctx.heatVision;
+    if (HV) for (let i = HV.fires.length - 1; i >= 0; i--) {
+      const f = HV.fires[i];
+      if (Math.hypot(f.p.x - me.x, f.p.z - me.z) < 7 && f.tree === undefined) (HV.fires.splice(i, 1), out++);
+    }
+    for (const p of this.props) if (p.burn > 0 && p.group.position.distanceTo(this.v.a.set(me.x, me.y, me.z)) < 7) (p.burn = 0), out++;
+    if (out) {
+      this.dust(me.x, me.y, me.z, 30, 5, [0.85, 0.85, 0.85]);
+      this.chaos(-Math.min(12, 4 * out), 'rescue', out > 1 ? 'Fires out' : 'Fire out');
+      return; // a fire-fighting punch: no shockwave
+    }
     this.blast(me.x, me.y - 0.16, me.z, 0.32);
   },
 
@@ -139,6 +232,7 @@ export default {
       else if (d < R * 1.8 && group === tr.cars) car.v = 0;
     }
     list.sort((a, b) => a[0] - b[0]);
+    if (!this.exploding) this.chaos(Math.round(2 + power * 5 + Math.min(list.length, 8) * 1.5), 'slam');
     for (const [d, car, parked] of list) {
       if (this.props.length >= MAX_PROPS) {
         if (!parked) car.v = 0;
@@ -171,13 +265,16 @@ export default {
     p.vel.set(j() * 3, 9 + Math.random() * 4, j() * 3);
     p.spin.set(j() * 5, j() * 2, j() * 5);
     if (p.damage < 3) p.body.damage(0.4);
+    this.chaos(8, 'explode');
     p.damage = 3;
     p.burn = 9;
     p.life = WRECK_LIFE + 4;
     const { x, y, z } = p.group.position;
     for (let k = 0; k < 46; k++)
       this.fire.emit(x + j() * 2, y + j(), z + j() * 2, j() * 9, 1 + Math.random() * 7, j() * 9, 0.5 + Math.random() * 0.5, 1.4 + Math.random() * 1.6, [1, 0.5 + Math.random() * 0.35, 0.12], 0.95, 1.6, 2.6, 1.2);
+    this.exploding = true;
     this.blast(x, y - p.half.y, z, 0.3);
+    this.exploding = false;
     return p;
   },
 
@@ -197,7 +294,7 @@ export default {
     this.ctx.scene.add(group);
     tr.take(car, 1e9);
     const p = {
-      car, parked, type, group, body, half: body.half, vel: new T.Vector3(), spin: new T.Vector3(),
+      car, parked, type, group, body, color, half: body.half, vel: new T.Vector3(), spin: new T.Vector3(),
       state: 'air', life: WRECK_LIFE, damage: 0, smokeT: 0, settle: 0, from: group.position.clone(), fromQ: group.quaternion.clone(),
     };
     this.props.push(p);
@@ -299,6 +396,7 @@ export default {
     this.dust(x, y - this.reach(p), z, 8 + speed, 3 + speed * 0.2, [0.62, 0.58, 0.52]);
     this.ctx.people.scare(x, z, 6 + speed * 0.8, 0.6);
     if (p.damage < 2) (p.damage++, p.body.damage(0.82));
+    if (!p.crashed && speed > 12) (p.crashed = true), this.chaos(4, 'crash');
     // A hard landing knocks the cars it falls on flying too
     if (speed > 12) for (const group of [this.ctx.traffic.cars, this.ctx.traffic.parkedCars]) for (const car of group) {
       if (car.away > 0 || this.props.length >= MAX_PROPS) continue;
@@ -400,11 +498,26 @@ export default {
 
   update(dt) {
     dt = Math.min(dt, 0.05);
-    const c = this.ctx.controls, me = this.hero(), T = this.T, v = this.v;
+    const c = this.ctx.controls, T = this.T, v = this.v;
+    let me = this.hero();
     if (this.pound && (c.mode !== 'walk' || (!c.walk.air && c.walk.vy <= 0))) {
       this.pound = false;
       if (c.mode === 'walk') (this.stompA = 0.5), c.player.imported?.stomp?.(), this.stompHit();
     }
+    // Carrying: the car can't follow you under a verandah or into a wall, so neither can you
+    if (this.held && me) {
+      const s = c.mode === 'walk' ? c.walk : c.heli;
+      if (this.roomAbove(me, this.held.half)) this.free = { x: s.x, y: s.y, z: s.z, mode: c.mode };
+      else if (this.free && this.free.mode === c.mode) {
+        s.x = this.free.x;
+        s.z = this.free.z;
+        if (c.mode === 'fly') (s.y = this.free.y), (s.vx = s.vy = s.vz = 0);
+        else s.vx = s.vz = 0;
+        if (!(this.tightT > 0)) (this.tightT = 2.5), this.toast('Too low to carry it under there');
+      }
+      this.tightT -= dt;
+      me = this.hero();
+    } else this.free = null;
     this.pose(dt, me);
     if ((this.scanT = (this.scanT || 0) - dt) < 0) (this.scanT = 0.15), (this.ready = this.held ? null : this.target());
     if (this.held && !me) this.throw(); // switched to the taxi or the map with a car overhead: drop it
@@ -427,10 +540,7 @@ export default {
         const k = p.lift * p.lift * (3 - 2 * p.lift);
         // Pressed overhead along the body's head direction: straight up on foot, out in front when flying flat out
         // (Superman-style); a little forward so the hero stays in view below its tail
-        const up = this.bodyUp(), ahead = p.half.z * 0.3 * Math.max(0, up.y);
-        v.a.set(me.x, me.y + 1, me.z).addScaledVector(up, 0.82 + p.half.y);
-        v.a.x += Math.sin(me.yaw) * ahead;
-        v.a.z += Math.cos(me.yaw) * ahead;
+        this.heldCentre(me, p.half, v.a);
         g.position.lerpVectors(p.from, v.a, k);
         v.q.setFromEuler(v.e.set(0, me.yaw, 0)); // carried front-to-back: from the chase camera you see its tail, not a wall
         g.quaternion.slerpQuaternions(p.fromQ, v.q, k);
@@ -474,9 +584,11 @@ export default {
       }
       // Resting: settle onto the nearest stable face, smoke, then fold away and come back repaired
       if (p.settle < 1) {
-        p.settle = Math.min(1, p.settle + dt / 0.35);
-        g.quaternion.slerpQuaternions(p.fromQ, p.restQ, p.settle);
-        g.position.y = p.restY;
+        p.settle = Math.min(1, p.settle + dt / (p.fromP ? 0.45 : 0.35));
+        const k = p.settle * p.settle * (3 - 2 * p.settle);
+        g.quaternion.slerpQuaternions(p.fromQ, p.restQ, k);
+        if (p.fromP) g.position.lerpVectors(p.fromP, p.restP, k); // set down: carried from overhead to the street
+        else g.position.y = p.restY;
       }
       p.life -= dt;
       if (p.damage > 0 && (p.smokeT -= dt) < 0) {

@@ -14,7 +14,7 @@ export function createTrafficModels(scene,capacities) {
     try {
       const gltf=await asset(file),pool=[];
       for(let i=0;i<Math.min(capacities[type],type==='kombi'?10:7);i++){
-        const root=gltf.scene.clone(true),materials=new Map(),paint=[],head=[],tail=[],wheels=[];
+        const root=gltf.scene.clone(true),materials=new Map(),paint=[],head=[],tail=[],wheels=[],bar=[];
         root.name=`detailed-traffic-${type}-${i}`;root.visible=false;
         // Match the visible body to the shared traffic footprint, including mirrors.
         if(type!=='kombi'){
@@ -31,14 +31,15 @@ export function createTrafficModels(scene,capacities) {
           if(m.name==='Paint'||m.name==='base')paint.push(m);
           if(m.name==='Headlamps'){m.emissive.set('#fff0d0');head.push(m);}
           if(m.name==='Taillamps'){m.emissive.set('#ff1305');tail.push(m);}
+          if(m.name==='BlueLights'){m.emissive.set('#2a5cff');m.emissiveIntensity=0;bar.push(m);}
         }
-        scene.add(root);pool.push({root,paint,head,tail,wheels});
+        scene.add(root);pool.push({root,paint,head,tail,wheels,bar});
       }
       pools[type]=pool;
     }catch(e){console.warn(`[harare] ${type} traffic model unavailable; using procedural model.`,e.message);}
   }));
   return {ready,pools,
-    update(cam,time,TYPE,X,Y,Z,H,COL,LMP,count){
+    update(cam,time,TYPE,X,Y,Z,H,COL,LMP,count,VAR){
       const selected=new Set();
       for(const [type,pool] of Object.entries(pools)){
         for(const p of pool)p.root.visible=false;
@@ -55,6 +56,8 @@ export function createTrafficModels(scene,capacities) {
           for(const m of p.head)m.emissiveIntensity=LMP[i*4]*2;
           for(const m of p.tail)m.emissiveIntensity=LMP[i*4]*.35+LMP[i*4+1]*2.5;
           for(const wheel of p.wheels)wheel.rotation.x=spin;
+          // police light bar (option bit 4: the chaos meter calls the police out)
+          for(const m of p.bar)m.emissiveIntensity=VAR&&Math.floor(VAR[i*4+1]/4)%2?(Math.floor(time*4.4)%2?5:.4):0;
           selected.add(i);
         });
       }

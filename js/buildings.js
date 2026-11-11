@@ -6,6 +6,7 @@
 // (render, face brick, precast, granite, mosaic, tin), recessed windows with parallax-mapped rooms behind them,
 // shopfronts and shutters are drawn in the shader. Shop names and billboards come from signs.js.
 import * as THREE from 'three';
+import { addOverhead } from './overheads.js';
 import { boxPolygon, circlePolygon, polygonsOverlap } from './collision.js';
 import { groundY, rng, coreWeight, Grid, polyBounds, pointInPoly, polyCentroid, segDist } from './util.js';
 import { buildingMaterials, LAYER_SCALE } from './building-textures.js';
@@ -274,6 +275,7 @@ export function buildBuildings(scene, DATA, renderer) {
     const a0 = [e.ax - tx * 0.2, y0 + h + 0.5, e.az - tz * 0.2], b0 = [e.bx + tx * 0.2, y0 + h + 0.5, e.bz + tz * 0.2];
     const a1 = [a0[0] + ox, y0 + h, a0[2] + oz], b1 = [b0[0] + ox, y0 + h, b0[2] + oz];
     quad(a0, b0, b1, a1, tin, null, mf(MAT.tin)); // tin roof, sloping outward
+    addOverhead(e.mx + ox / 2, e.mz + oz / 2, tx, tz, e.len / 2 + 0.2, depth / 2, y0 + h);
     quad(b0, a0, a1, b1, tin.clone().multiplyScalar(0.55), null, NOFAC); // soffit
     const n = Math.max(2, Math.round(e.len / 3.2));
     for (let i = 0; i <= n; i++) {
@@ -292,6 +294,7 @@ export function buildBuildings(scene, DATA, renderer) {
   function canopy(e, y0, r, concrete) {
     const depth = 2.6, h = 3.9, yaw = yawOf(e);
     box(e.mx + (e.nx * depth) / 2, e.mz + (e.nz * depth) / 2, y0 + h, e.len, depth, 0.28, concrete, yaw, mf(MAT.concrete));
+    addOverhead(e.mx + (e.nx * depth) / 2, e.mz + (e.nz * depth) / 2, (e.bx - e.ax) / e.len, (e.bz - e.az) / e.len, e.len / 2, depth / 2, y0 + h - 0.14);
     box(e.mx + e.nx * (depth + 0.03), e.mz + e.nz * (depth + 0.03), y0 + h - 0.14, e.len, 0.06, 0.8, concrete, yaw, mf(MAT.concrete));
     shopSigns(e, y0 + h - 0.06, depth + 0.065, r, 0.85);
   }

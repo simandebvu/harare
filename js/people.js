@@ -2,6 +2,7 @@
 // hawkers who walk out between the cars while the robots are red. Everyone is one GPU-animated instanced mesh
 // (figures.js); this file only decides where they stand and whether they're walking.
 import * as THREE from 'three';
+import { addOverhead } from './overheads.js';
 import { movePedestrian } from './pedestrian-motion.js';
 import { groundY, rng, coreWeight } from './util.js';
 import { createFigures } from './figures.js';
@@ -300,6 +301,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     shelterList.forEach((s, i) => {
       q.setFromAxisAngle(up, s.yaw);
       m.compose(v.set(s.x, groundY(s.x, s.z) + s.y, s.z), q, sc.set(1, 1, s.len));
+      addOverhead(s.x, s.z, Math.sin(s.yaw), Math.cos(s.yaw), s.len / 2, 1.4, groundY(s.x, s.z) + s.y + 2.5);
       shelters.setMatrixAt(i, m);
     });
     shelters.castShadow = shelters.receiveShadow = true;

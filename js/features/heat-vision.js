@@ -190,7 +190,7 @@ export default {
     if (Math.random() < 0.3) P.smoke.emit(h.x, h.y + 0.2, h.z, j() * 0.4, 1 + Math.random(), j() * 0.4, 1.8, 0.7, [0.25, 0.24, 0.24], 0.4, 2, 1, 0.4);
     if ((this.scareT = (this.scareT || 0) - dt) < 0) (this.scareT = 0.3), this.ctx.people.scare(h.x, h.z, 9, 0);
     if (hit.target?.person) {
-      if ((this.zapT = (this.zapT || 0) - dt) < 0) (this.zapT = 0.4), this.ctx.people.scare(h.x, h.z, 2.5, 0.8);
+      if ((this.zapT = (this.zapT || 0) - dt) < 0) (this.zapT = 0.4), this.ctx.people.scare(h.x, h.z, 2.5, 0.8), P.chaos(1, 'zap');
       return;
     }
     if (hit.target?.tree !== undefined) {
@@ -200,6 +200,7 @@ export default {
         this.treeHeat.delete(i);
         if (this.fires.length >= FIRES) this.fires.shift();
         this.fires.push({ p: new this.T.Vector3(C.cx[i], C.cy[i] - C.cr[i] * 0.2, C.cz[i]), n: v.up.clone(), age: 0, t: 0, tree: i, spread: C.cr[i] * 0.9, big: 1.8 });
+        P.chaos(5, 'fire');
       }
       return;
     }
@@ -213,6 +214,7 @@ export default {
       }
       return;
     }
+    if ((this.scorchT = (this.scorchT || 0) + dt) > 1) (this.scorchT = 0), P.chaos(1, 'fire');
     if (h.distanceTo(this.lastMark) > 0.45) this.mark(h, hit.normal, hit.corner ? 0.45 : hit.wall ? 0.75 : 1);
     const key = Math.round(h.x / 2) + ',' + Math.round(h.y / 2) + ',' + Math.round(h.z / 2);
     const t = (this.heat.get(key) || 0) + dt;
@@ -221,6 +223,7 @@ export default {
       this.heat.delete(key);
       if (this.fires.length >= FIRES) this.fires.shift();
       this.fires.push({ p: h.clone(), n: hit.normal.clone(), age: 0, t: 0 });
+      P.chaos(3, 'fire');
     }
     if (this.heat.size > 400) this.heat.clear();
   },

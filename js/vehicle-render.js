@@ -318,6 +318,12 @@ export function createVehicleRenderer(scene, opts = {}) {
       Z[i] = z;
       H[i] = h;
     },
+    // option bits (4: police light bar on)
+    setOpt(i, bit, on) {
+      const o = i * 4 + 1, has = Math.floor(VAR[o] / bit) % 2 === 1;
+      if (on && !has) VAR[o] += bit;
+      else if (!on && has) VAR[o] -= bit;
+    },
     lamp(i, head, brake, ind, cab) {
       const o = i * 4;
       LMP[o] = head;
@@ -338,7 +344,7 @@ export function createVehicleRenderer(scene, opts = {}) {
         cz = cam.position.z;
       }
       for (const type of types) for (const L of T[type]) L.n = 0;
-      const imported=detailed.update(cam,time,TYPE,X,Y,Z,H,COL,LMP,n.v);
+      const imported=detailed.update(cam,time,TYPE,X,Y,Z,H,COL,LMP,n.v,VAR);
       const near2 = NEAR * NEAR, far2 = FAR * FAR;
       const doGlow = night > 0.02;
       let g = 0;
