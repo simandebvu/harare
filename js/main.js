@@ -221,8 +221,8 @@ async function init() {
   // --- HUD -------------------------------------------------------------------------------------------------------------
   const help = document.getElementById('help');
   const HELP = {
-    fly: 'Look up or down and hold W to climb or dive · Space / E rise · C / Q descend · Shift boost · G lift / throw a car · X slam down · 2 land · V camera',
-    walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · G lift / throw a car · X stomp · R fly or enter taxi · V camera',
+    fly: 'Look up or down and hold W to climb or dive · Space / E rise · C / Q descend · Shift boost · G lift / throw a car · X slam down · hold Z heat vision · 2 land · V camera',
+    walk: 'Click the city to look around (Esc frees the mouse) · WASD walk · Shift run · Space jump · G lift / throw a car · X stomp · hold Z heat vision · R fly or enter taxi · V camera',
     drive: 'Click the city to look around · W/S gas & reverse · A/D steer · Space brake · R get out · keep left!',
   };
   // The key reference shows for a while after each mode switch, then gets out of the way of the city
@@ -243,7 +243,7 @@ async function init() {
     labels.visible = m === 'fly' && labelsOn;
     labelRenderer.domElement.style.display = labels.visible ? '' : 'none';
   };
-  addEventListener('harare:landing',()=>{help.textContent='Landing… · A/D steer · W move to clear ground · 1 cancel';flashHints();});
+  addEventListener('harare:landing',()=>{help.textContent=controls.heli.slam?'Slam! · brace for impact':'Landing… · A/D steer · W move to clear ground · 1 cancel';flashHints();});
   addEventListener('harare:landed',e=>setMode(e.detail));
   let labelsOn = true;
   buttons.forEach((b) => b.addEventListener('click', (e) => {

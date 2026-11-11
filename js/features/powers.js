@@ -24,7 +24,9 @@ export default {
     this.held = null;
     this.v = { a: new T.Vector3(), b: new T.Vector3(), q: new T.Quaternion(), q2: new T.Quaternion(), e: new T.Euler() };
     this.models = {};
-    for (const [type, file] of Object.entries(GLB)) glb(file).then((g) => g && (this.models[type] = g.scene));
+    this.pool = {};
+    Promise.all(Object.entries(GLB).map(([type, file]) => glb(file).then((g) => g && (this.models[type] = g.scene)))).then(() =>
+      (window.requestIdleCallback || setTimeout)(() => this.prewarm()));
     this.buildParticles();
     this.buildShockwave();
     ctx.powers = this;
@@ -142,6 +144,27 @@ export default {
     dispatchEvent(new CustomEvent('harare:crash', { detail: { strength: 6 + power * 10 } }));
   },
 
+  // Heat vision (anything hot): the vehicle — traffic or an existing wreck — blows up into the air, charred and burning
+  explode(car, parked) {
+    let p = this.props.find((q) => q.car === car);
+    if (!p) p = this.spawnProp(car, parked, parked ? car.y : groundY(car.x, car.z) + ROAD_Y);
+    if (!p) return null;
+    if (p === this.held) this.held = null;
+    const j = () => Math.random() - 0.5;
+    p.state = 'air';
+    p.vel.set(j() * 3, 9 + Math.random() * 4, j() * 3);
+    p.spin.set(j() * 5, j() * 2, j() * 5);
+    if (p.damage < 3) p.body.damage(0.4);
+    p.damage = 3;
+    p.burn = 9;
+    p.life = WRECK_LIFE + 4;
+    const { x, y, z } = p.group.position;
+    for (let k = 0; k < 46; k++)
+      this.fire.emit(x + j() * 2, y + j(), z + j() * 2, j() * 9, 1 + Math.random() * 7, j() * 9, 0.5 + Math.random() * 0.5, 1.4 + Math.random() * 1.6, [1, 0.5 + Math.random() * 0.35, 0.12], 0.95, 1.6, 2.6, 1.2);
+    this.blast(x, y - p.half.y, z, 0.3);
+    return p;
+  },
+
   // --- props ---------------------------------------------------------------------------------------------------------
   spawnProp(car, parked, base) {
     const T = this.T, tr = this.ctx.traffic;
@@ -151,23 +174,56 @@ export default {
       this.removeProp(old);
     }
     const type = car.type || 'kombi', color = car.color || '#f2f1ec';
-    const group = new T.Group(), body = this.makeBody(type, color);
-    const box = new T.Box3().setFromObject(body.root), size = box.getSize(new T.Vector3()), centre = box.getCenter(new T.Vector3());
-    body.root.position.sub(centre); // pivot on the middle of the body so it tumbles about its centre of mass
+    const group = new T.Group(), body = this.body(type, color);
     group.add(body.root);
-    group.position.set(car.x, base + centre.y, car.z);
+    group.position.set(car.x, base + body.cy, car.z);
     group.rotation.y = car.h;
     this.ctx.scene.add(group);
     tr.take(car, 1e9);
     const p = {
-      car, parked, type, group, body, half: size.multiplyScalar(0.5), vel: new T.Vector3(), spin: new T.Vector3(),
+      car, parked, type, group, body, half: body.half, vel: new T.Vector3(), spin: new T.Vector3(),
       state: 'air', life: WRECK_LIFE, damage: 0, smokeT: 0, settle: 0, from: group.position.clone(), fromQ: group.quaternion.clone(),
     };
     this.props.push(p);
     return p;
   },
 
-  makeBody(type, color) {
+  // Vehicle bodies are pooled per type: cloning a downloaded model (and its materials) mid-slam costs a frame hitch
+  body(type, color) {
+    const pool = (this.pool[type] ||= []);
+    const b = pool.pop() || this.makeBody(type);
+    b.recolor(color);
+    return b;
+  },
+  prewarm() {
+    for (const type of Object.keys(GLB)) {
+      const pool = (this.pool[type] ||= []);
+      while (pool.length < (type === 'kombi' ? 8 : 3)) pool.push(this.makeBody(type));
+    }
+    // Compile their shaders now, off to one side, so the first slam doesn't stall on it
+    const T = this.T, stage = new T.Group();
+    for (const pool of Object.values(this.pool)) for (const b of pool) stage.add(b.root);
+    this.ctx.scene.add(stage);
+    this.ctx.renderer.compileAsync(stage, this.ctx.camera, this.ctx.scene).catch(() => {}).finally(() => {
+      this.ctx.scene.remove(stage);
+      for (const pool of Object.values(this.pool)) for (const b of pool) stage.remove(b.root);
+    });
+  },
+
+  makeBody(type) {
+    const b = this.makeMesh(type), T = this.T;
+    // Pivot on the middle of the body so it tumbles about its centre of mass
+    const box = new T.Box3().setFromObject(b.root), centre = box.getCenter(new T.Vector3());
+    b.half = box.getSize(new T.Vector3()).multiplyScalar(0.5);
+    b.cy = centre.y;
+    b.root.position.sub(centre);
+    const holder = new T.Group();
+    holder.add(b.root);
+    b.root = holder;
+    return b;
+  },
+
+  makeMesh(type, color = '#ffffff') {
     const T = this.T, src = this.models[type];
     if (src) {
       const root = src.clone(true), paint = [];
@@ -184,7 +240,7 @@ export default {
       if (type !== 'kombi') root.scale.x *= VEHICLE_TYPES[type].width / new T.Box3().setFromObject(root).getSize(new T.Vector3()).x;
       const wrap = new T.Group();
       wrap.add(root);
-      return { root: wrap, damage: (k) => paint.forEach((m) => m.color.multiplyScalar(k)), dispose: () => mats.forEach((m) => m.dispose()) };
+      return { root: wrap, recolor: (col) => paint.forEach((m) => m.color.set(col)), damage: (k) => paint.forEach((m) => m.color.multiplyScalar(k)) };
     }
     // Procedural model on the traffic material, for the vehicles without a downloaded model (bakkies, ZUPCO bus)
     const geo = vehicleGeometry(type, 1, true);
@@ -199,12 +255,14 @@ export default {
     mesh.frustumCulled = false;
     const wrap = new T.Group();
     wrap.add(mesh);
-    return { root: wrap, damage: (k) => (c.multiplyScalar(k), mesh.setColorAt(0, c), (mesh.instanceColor.needsUpdate = true)), dispose: () => geo.dispose() };
+    const paint = (fn) => (fn(), mesh.setColorAt(0, c), (mesh.instanceColor.needsUpdate = true));
+    return { root: wrap, recolor: (col) => paint(() => c.set(col)), damage: (k) => paint(() => c.multiplyScalar(k)) };
   },
 
   removeProp(p) {
     this.ctx.scene.remove(p.group);
-    p.body.dispose();
+    p.group.remove(p.body.root);
+    this.pool[p.type].push(p.body);
     if (this.held === p) this.held = null;
     this.props.splice(this.props.indexOf(p), 1);
     p.car.away = 0.001; // repaired: back on the rank, or rejoining traffic out of sight (traffic.respawn)
@@ -246,6 +304,15 @@ export default {
     c.rig.carry = (c.rig.carry || 0) + (carry - (c.rig.carry || 0)) * (1 - Math.exp(-dt * 4));
     for (const p of [...this.props]) {
       const g = p.group;
+      if (p.burn > 0) {
+        p.burn -= dt;
+        if ((p.fireT = (p.fireT || 0) - dt) < 0) {
+          p.fireT = 0.045;
+          const s = g.position, j = () => (Math.random() - 0.5) * 2;
+          this.fire.emit(s.x + j() * p.half.x, s.y + p.half.y * 0.3, s.z + j() * p.half.z * 0.7, j() * 0.3, 1.5 + Math.random() * 1.5, j() * 0.3, 0.5 + Math.random() * 0.4, 0.9 + Math.random() * 0.7, [1, 0.42 + Math.random() * 0.3, 0.08], 0.8, 0.4, 1.5, 2.5);
+          if (Math.random() < 0.4) this.smoke.emit(s.x + j(), s.y + p.half.y + 0.4, s.z + j(), j() * 0.3, 2 + Math.random(), j() * 0.3, 3.2, 1.8, [0.1, 0.1, 0.11], 0.65, 2, 1.2, 0.5);
+        }
+      }
       if (p.state === 'held') {
         // Rise from the street into a press overhead, then ride along above the hero's head
         p.lift = Math.min(1, p.lift + dt / 0.45);
@@ -311,7 +378,12 @@ export default {
         this.removeProp(p);
       }
     }
-    this.updateParticles(dt);
+    // Wrecks lying on the street: traffic queues behind them (traffic.js) until they fold away
+    const obs = this.ctx.traffic.obstacles;
+    obs.length = 0;
+    for (const p of this.props) if (p.state === 'rest') obs.push({ x: p.group.position.x, z: p.group.position.z, r: Math.max(p.half.x, p.half.z) * 0.85 });
+    this.smoke.update(dt);
+    this.fire.update(dt);
     this.updateShockwave(dt);
   },
 
@@ -335,35 +407,11 @@ export default {
 
   // --- effects ---------------------------------------------------------------------------------------------------------
   buildParticles() {
-    const T = this.T, N = (this.pN = 400), geo = new T.BufferGeometry();
-    this.pPos = new Float32Array(N * 3);
-    this.pCol = new Float32Array(N * 4);
-    this.pSize = new Float32Array(N);
-    this.pState = Array.from({ length: N }, () => ({ age: 1, life: 0, vx: 0, vy: 0, vz: 0, size: 1, grow: 0, alpha: 0, drag: 1 }));
-    geo.setAttribute('position', new T.BufferAttribute(this.pPos, 3));
-    geo.setAttribute('aCol', new T.BufferAttribute(this.pCol, 4));
-    geo.setAttribute('aSize', new T.BufferAttribute(this.pSize, 1));
-    const mat = new T.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      vertexShader: `attribute vec4 aCol;attribute float aSize;varying vec4 vCol;
-        void main(){vCol=aCol;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=aSize*600./max(1.,-mv.z);}`,
-      fragmentShader: `varying vec4 vCol;void main(){float d=length(gl_PointCoord-.5)*2.;float a=smoothstep(1.,.2,d)*vCol.a;if(a<.01)discard;gl_FragColor=vec4(vCol.rgb,a);}`,
-    });
-    this.points = new T.Points(geo, mat);
-    this.points.frustumCulled = false;
-    this.points.renderOrder = 5;
-    this.points.name = 'power-particles';
-    this.ctx.scene.add(this.points);
-    this.pNext = 0;
+    this.smoke = new Puffs(this.T, this.ctx.scene, 400, false);
+    this.fire = new Puffs(this.T, this.ctx.scene, 300, true);
   },
-
-  emit(x, y, z, vx, vy, vz, life, size, col, alpha, grow = 1.6, drag = 1.2) {
-    const i = this.pNext, s = this.pState[i];
-    this.pNext = (i + 1) % this.pN;
-    Object.assign(s, { age: 0, life, vx, vy, vz, size, grow, alpha, drag });
-    this.pPos.set([x, y, z], i * 3);
-    this.pCol.set([col[0], col[1], col[2], alpha], i * 4);
+  emit(...args) {
+    this.smoke.emit(...args);
   },
 
   dust(x, y, z, count, speed, col) {
@@ -371,33 +419,6 @@ export default {
       const a = Math.random() * Math.PI * 2, s = speed * (0.4 + Math.random() * 0.6), t = 0.6 + Math.random() * 0.5;
       this.emit(x + Math.cos(a) * 0.6, y + 0.3, z + Math.sin(a) * 0.6, Math.cos(a) * s, 0.6 + Math.random() * speed * 0.25, Math.sin(a) * s, 1.1 + Math.random() * 0.9, 1.2 + Math.random(), [col[0] * t + 0.1, col[1] * t + 0.1, col[2] * t + 0.1], 0.6, 2.2, 2.8);
     }
-  },
-
-  updateParticles(dt) {
-    let live = 0;
-    for (let i = 0; i < this.pN; i++) {
-      const s = this.pState[i];
-      if (s.age >= s.life) {
-        this.pSize[i] = 0;
-        continue;
-      }
-      live++;
-      s.age += dt;
-      const k = Math.exp(-dt * s.drag), o = i * 3;
-      s.vx *= k;
-      s.vz *= k;
-      s.vy = s.vy * k + 0.3 * dt;
-      this.pPos[o] += s.vx * dt;
-      this.pPos[o + 1] += s.vy * dt;
-      this.pPos[o + 2] += s.vz * dt;
-      const t = s.age / s.life;
-      this.pSize[i] = s.size * (1 + t * s.grow);
-      this.pCol[i * 4 + 3] = s.alpha * Math.min(1, t * 8) * (1 - t);
-    }
-    this.points.visible = live > 0;
-    if (!live) return;
-    const a = this.points.geometry.attributes;
-    a.position.needsUpdate = a.aCol.needsUpdate = a.aSize.needsUpdate = true;
   },
 
   buildShockwave() {
@@ -450,3 +471,66 @@ export default {
     this.toastT = setTimeout(() => el.classList.remove('on'), 2200);
   },
 };
+
+// Soft round particles: smoke and dust (normal blending) or fire and sparks (additive)
+class Puffs {
+  constructor(T, scene, N, additive) {
+    this.N = N;
+    this.next = 0;
+    this.pos = new Float32Array(N * 3);
+    this.col = new Float32Array(N * 4);
+    this.size = new Float32Array(N);
+    this.st = Array.from({ length: N }, () => ({ age: 1, life: 0, vx: 0, vy: 0, vz: 0, size: 1, grow: 0, alpha: 0, drag: 1, rise: 0.3 }));
+    const geo = new T.BufferGeometry();
+    geo.setAttribute('position', new T.BufferAttribute(this.pos, 3));
+    geo.setAttribute('aCol', new T.BufferAttribute(this.col, 4));
+    geo.setAttribute('aSize', new T.BufferAttribute(this.size, 1));
+    const mat = new T.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: additive ? T.AdditiveBlending : T.NormalBlending,
+      vertexShader: `attribute vec4 aCol;attribute float aSize;varying vec4 vCol;
+        void main(){vCol=aCol;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=aSize*600./max(1.,-mv.z);}`,
+      fragmentShader: `varying vec4 vCol;void main(){float d=length(gl_PointCoord-.5)*2.;float a=smoothstep(1.,.2,d)*vCol.a;if(a<.01)discard;gl_FragColor=vec4(vCol.rgb,a);}`,
+    });
+    this.points = new T.Points(geo, mat);
+    this.points.frustumCulled = false;
+    this.points.renderOrder = additive ? 6 : 5;
+    this.points.visible = false;
+    scene.add(this.points);
+  }
+  // rise: upward acceleration (smoke and flame climb, sparks pass a negative one to fall)
+  emit(x, y, z, vx, vy, vz, life, size, col, alpha, grow = 1.6, drag = 1.2, rise = 0.3) {
+    const i = this.next, s = this.st[i];
+    this.next = (i + 1) % this.N;
+    Object.assign(s, { age: 0, life, vx, vy, vz, size, grow, alpha, drag, rise });
+    this.pos.set([x, y, z], i * 3);
+    this.col.set([col[0], col[1], col[2], alpha], i * 4);
+  }
+  update(dt) {
+    let live = 0;
+    for (let i = 0; i < this.N; i++) {
+      const s = this.st[i];
+      if (s.age >= s.life) {
+        this.size[i] = 0;
+        continue;
+      }
+      live++;
+      s.age += dt;
+      const k = Math.exp(-dt * s.drag), o = i * 3;
+      s.vx *= k;
+      s.vz *= k;
+      s.vy = s.vy * k + s.rise * dt;
+      this.pos[o] += s.vx * dt;
+      this.pos[o + 1] += s.vy * dt;
+      this.pos[o + 2] += s.vz * dt;
+      const t = s.age / s.life;
+      this.size[i] = s.size * (1 + t * s.grow);
+      this.col[i * 4 + 3] = s.alpha * Math.min(1, t * 8) * (1 - t);
+    }
+    this.points.visible = live > 0;
+    if (!live) return;
+    const a = this.points.geometry.attributes;
+    a.position.needsUpdate = a.aCol.needsUpdate = a.aSize.needsUpdate = true;
+  }
+}

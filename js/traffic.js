@@ -243,6 +243,7 @@ export function createTraffic(scene, DATA, count = 650) {
   // --- simulation --------------------------------------------------------------------------------------------------------
   const tmpS = {};
   let time = 0;
+  const obstacles = []; // {x, z, r}: wrecks in the road, kept up to date by js/features/powers.js
   const buckets = new Map(); // edge*2+dir -> cars sorted by s (arrays reused frame to frame)
 
   function release(car) {
@@ -347,6 +348,16 @@ export function createTraffic(scene, DATA, count = 650) {
       const nb = buckets.get(car.next.e * 2 + (car.next.dir > 0 ? 1 : 0));
       if (nb?.length) exitRoom = nb[0].s - nb[0].len / 2;
       if (gap > remaining && nb?.length && remaining + exitRoom - car.len / 2 < gap) (gap = remaining + exitRoom - car.len / 2), (car.why = 'exit');
+      // ... or a wreck the hero left lying in the road (powers): queue behind it rather than drive through it
+      for (let k = 0; k < obstacles.length; k++) {
+        const o = obstacles[k], dx = o.x - car.x, dz = o.z - car.z;
+        if (Math.abs(dx) > 40 || Math.abs(dz) > 40) continue;
+        const sn = Math.sin(car.h), cs = Math.cos(car.h), along = dx * sn + dz * cs, side = dx * cs - dz * sn;
+        if (along > 0 && Math.abs(side) < o.r + car.width / 2) {
+          const g = along - o.r - car.len / 2 - 1;
+          if (g < gap) (gap = Math.max(0, g)), (car.why = 'wreck');
+        }
+      }
 
       // Junction ahead: robots, then the reservation
       const node = endNode(car.e, car.dir);
@@ -521,7 +532,7 @@ export function createTraffic(scene, DATA, count = 650) {
       if(!contacts.buildingBlocked(x,z,c.h,c.len/2,c.width/2)){c.x=x;c.z=z;return;}
     }
   }
-  return { setContacts: value=>{contacts=value;for(const c of cars)if(c.init)clearSpawn(c);}, parkedCars:parked, take, update, cars, lightCount: lights.size, jamStats, jCars, conflict, parked: slots.length, renderer: R, crew };
+  return { setContacts: value=>{contacts=value;for(const c of cars)if(c.init)clearSpawn(c);}, parkedCars:parked, take, obstacles, update, cars, lightCount: lights.size, jamStats, jCars, conflict, parked: slots.length, renderer: R, crew };
 }
 
 const byS = (a, b) => a.s - b.s;

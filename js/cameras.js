@@ -357,6 +357,8 @@ export class CameraRig {
     const side = preset.id === 'action' ? 0.45 : 0;
     const ox = -(fx * Math.cos(side) - fz * Math.sin(side)), oz = -(fz * Math.cos(side) + fx * Math.sin(side));
     look.set(t.x, t.y + lookH, t.z);
+    // Aiming (heat vision): over the right shoulder, so the centre of the screen is the city and not the hero's head
+    if (this.aim > 0.01) (look.x += fz * 0.85 * this.aim), (look.z -= fx * 0.85 * this.aim), (look.y += 0.15 * this.aim);
     const hy = walk ? height + spch * dist : height + spch * dist * 0.8;
     const want = _q.set(look.x + ox * dist * cp, t.y + Math.max(0.3, hy), look.z + oz * dist * cp);
     let dWant = this.clearance(look.x, look.y, look.z, want.x, want.y, want.z);

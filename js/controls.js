@@ -532,7 +532,8 @@ export class Controls {
     this.viewDipNow=(this.viewDipNow||0)+((this.viewDip||0)-(this.viewDipNow||0))*(1-Math.exp(-dt*3));
     const vp=THREE.MathUtils.clamp(h.pitch-this.viewDipNow,-1.35,.9);
     // A damped chase camera eases through turns; pitch drag now changes the view.
-    _v.set(h.x-fx*distance,h.y+2.2-Math.sin(vp)*distance*.65,h.z-fz*distance);
+    const aim=(this.rig.aim||0)*1.1,sx=fz*aim,sz=-fx*aim; // over the shoulder while aiming (heat vision)
+    _v.set(h.x-fx*distance+sx,h.y+2.2-Math.sin(vp)*distance*.65,h.z-fz*distance+sz);
     // Keep the chase camera out of buildings and above the ground, the same way the walk/drive rig does
     const hx=h.x,hy=h.y+1,hz=h.z,camFloor=(x,z)=>groundY(x,z)+.4;
     let f=this.rig.clearance(hx,hy,hz,_v.x,_v.y,_v.z);
@@ -553,7 +554,7 @@ export class Controls {
     c.position.y=Math.max(c.position.y,camFloor(c.position.x,c.position.z));
     this.rig.setNear(THREE.MathUtils.clamp((Math.hypot(c.position.x-hx,c.position.y-hy,c.position.z-hz)-.6)*.6,.06,1));
     if(h.phase==='impact')c.position.y+=Math.sin(h.phaseTime*55)*.065*Math.exp(-h.phaseTime*7);
-    c.lookAt(h.x+fx*2,h.y+1+Math.sin(vp)*2,h.z+fz*2);
+    c.lookAt(h.x+fx*2+sx,h.y+1+Math.sin(vp)*2,h.z+fz*2+sz);
     this.rig.setFov(60 + Math.min(12, Math.hypot(h.vx, h.vz) * 0.12), dt);
     this.camWritten.copy(c.position);
   }

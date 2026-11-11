@@ -48,7 +48,7 @@ export default {
    else{const d=Math.hypot(p.x-this.target.x,p.z-this.target.z),alt=p.y-this.target.y;label=d>8?'Fly to the cyan rooftop target':alt<2?'Rise above the receiving deck':alt>12?'Descend to 2–12 m above the deck':'Slow to a hover to release';}
   }else if(s.status==='falling')label='Package falling…';
   else if(c.mode==='drive'){label='Exit taxi';this.act=()=>this.ctx.setMode('walk');}
-  else if(c.mode==='fly'){label=c.heli.landing?'Landing…':'Land';if(!c.heli.landing)this.act=()=>this.ctx.setMode('walk');}
+  else if(c.mode==='fly'){label=c.heli.landing?(c.heli.slam?'Slam!':'Landing…'):'Land';if(!c.heli.landing)this.act=()=>this.ctx.setMode('walk');}
   else if(c.mode==='walk'){
    if(s.status!=='carrying'&&c.driven&&Math.hypot(p.x-c.car.x,p.z-c.car.z)<4){label='Enter taxi';this.act=()=>this.ctx.setMode('drive');}
    else{label='Fly';this.act=()=>this.ctx.setMode('fly');}
