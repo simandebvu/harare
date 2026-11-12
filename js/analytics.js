@@ -20,7 +20,7 @@ if (on) {
 
 function send(name) {
   try {
-    window.goatcounter.count({ path: 'event/' + name, title: name, event: true });
+    window.goatcounter.count({ path: 'harare/' + name, title: name, event: true });
   } catch {}
 }
 

@@ -1,6 +1,6 @@
-# Slop Harare
+# Harare 3D
 
-A procedural Harare CBD in [three.js](https://threejs.org/), built from OpenStreetMap. Inspired by mrdoob's
+Harare 3D (first built as "Slop Harare") is a procedural Harare CBD in [three.js](https://threejs.org/), built from OpenStreetMap. Inspired by mrdoob's
 [Slop New York](https://github.com/mrdoob/slop-newyork) (no code reused).
 
 Walk the pavements past vendors and touts, drive a kombi (on the left) and pick up fares, or take to the sky as

@@ -1,4 +1,4 @@
-// js/audio/synth.js — every sound in Slop Harare, synthesized into Float32Arrays at SR (no audio files, no WebAudio
+// js/audio/synth.js — every sound in Harare 3D, synthesized into Float32Arrays at SR (no audio files, no WebAudio
 // here). Loops are cross-faded so they wrap without clicks; one-shots are DC-free, edge-faded and peak-normalized.
 // The caller wraps the arrays in AudioBuffers once an AudioContext exists.
 export const SR = 32000;

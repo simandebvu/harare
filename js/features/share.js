@@ -4,7 +4,13 @@
 // "Made by" line pointing at the author's other projects.
 import { track } from '../analytics.js';
 
-const AUTHOR = { name: 'Shingirayi Mandebvu', url: 'https://github.com/simandebvu' };
+const AUTHOR = { name: 'Simakk', url: 'https://simakk.co.za/?ref=harare3d' };
+// The studio's other projects, most relevant to this audience first
+const MORE = [
+  { n: 'Rotapot', d: 'An AI treasurer for mukando, stokvels and diaspora savings rounds', url: 'https://rotapot.simakk.co.za/?ref=harare3d' },
+  { n: 'Maat', d: 'Product intelligence for African markets', url: 'https://maat.simakk.co.za/?ref=harare3d' },
+  { n: 'Lantern', d: 'A calm space for daily prayer', url: 'https://www.simakk.co.za/lantern?ref=harare3d' },
+];
 
 export default {
   init(ctx) {
@@ -16,14 +22,16 @@ export default {
 #play-menu .share-btn{padding:11px;border-radius:10px;border:1px solid #f5d453;background:#f5d453;color:#18201c;font:600 14px system-ui;cursor:pointer}
 #play-menu .share-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
 #play-menu .share-note{margin:0;font-size:12px;color:#8fa59b;min-height:1em}
-#play-menu .made-by{margin:14px 0 0;font-size:12.5px;color:#b9c9c1}#play-menu .made-by a{color:#f5d453}
+#play-menu .made-by{margin:14px 0 0;font-size:12.5px;color:#b9c9c1}#play-menu .made-by a,#play-menu .more a{color:#f5d453}
+#play-menu .more{margin:6px 0 0;padding:0 0 0 2px;list-style:none;display:grid;gap:5px;font-size:12.5px;color:#b9c9c1}#play-menu .more a{font-weight:650}
 @media (max-width:600px){#credit .by{display:none}}`;
     document.head.appendChild(st);
     const menu = document.getElementById('play-menu');
     if (!menu) return;
     const row = document.createElement('div');
     row.className = 'share-row';
-    row.innerHTML = `<button type="button" class="share-btn">Share where you are</button><p class="share-note" role="status"></p><p class="made-by">Made by <a href="${AUTHOR.url}" target="_blank" rel="noopener">${AUTHOR.name}</a> · <a href="${AUTHOR.url}?tab=repositories" target="_blank" rel="noopener">more projects</a></p>`;
+    row.innerHTML = `<button type="button" class="share-btn">Share where you are</button><p class="share-note" role="status"></p><p class="made-by">Made by <a href="${AUTHOR.url}" target="_blank" rel="noopener">${AUTHOR.name}</a>, a studio in Cape Town. More from us:</p><ul class="more">${MORE.map((m) => `<li><a href="${m.url}" target="_blank" rel="noopener">${m.n}</a> · ${m.d}</li>`).join('')}</ul>`;
+    row.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => track('out-' + a.textContent.toLowerCase())));
     menu.appendChild(row);
     this.note = row.querySelector('.share-note');
     row.querySelector('.share-btn').onclick = () => this.share();
@@ -46,11 +54,11 @@ export default {
 
   async share() {
     const url = this.link(), street = this.ctx.chaos?.street?.() || 'the CBD';
-    const text = `I'm on ${street} in Harare, in your browser. Come find me:`;
+    const text = `I'm on ${street} in Harare 3D. Come find me:`;
     track('share');
     try {
       if (navigator.share && matchMedia('(pointer:coarse)').matches) {
-        await navigator.share({ title: 'Harare', text, url });
+        await navigator.share({ title: 'Harare 3D', text, url });
         return;
       }
       await navigator.clipboard.writeText(`${text} ${url}`);
