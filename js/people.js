@@ -285,6 +285,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
   }
   crates.count = nc;
   for (const m of [table, umbrella, crates]) m.castShadow = true;
+  for (const m of [table, produce, umbrella, stick, crates]) m.userData.static = 'prop'; // tiled and distance-culled by detail.js
   if (ns) scene.add(table, produce, umbrella, stick);
   if (nc) scene.add(crates);
 
@@ -305,6 +306,7 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
       shelters.setMatrixAt(i, m);
     });
     shelters.castShadow = shelters.receiveShadow = true;
+    shelters.userData.static = 'prop';
     scene.add(shelters);
   }
   const loiter = []; // rank crowd + touts: stand, chat, shuffle a few metres, wave at passing kombis

@@ -370,6 +370,14 @@ async function init() {
       if (avg > 1 / 38 && post.quality > 1 && !userQuality) post.setQuality(1), showQuality(), (frameTimes.length = 0), (frameSum = 0);
     }
 
+    // Phones in flight: people are a few pixels tall from up there, so draw only the nearer ones and let the far-detail
+    // crowd skip the shadow map (at flight span a shadow texel is ~40 cm, too coarse to show them anyway)
+    if (phone) {
+      const fly = controls.mode === 'fly';
+      people.figures.setFar(fly ? 250 : 480);
+      people.figures.meshes[1].castShadow = !fly;
+    }
+
     // Shadow frustum follows what you're looking at
     const p = controls.position;
     // Snap in the light's image plane: world-axis snapping makes shadows jump when driving.

@@ -675,7 +675,8 @@ const SKIN_LIGHT = (() => {
 
 // --- instances ---------------------------------------------------------------------------------------------------------
 export function createFigures(scene, capacity, opts = {}) {
-  const NEAR = opts.near ?? 45, FAR = opts.far ?? 480;
+  const NEAR = opts.near ?? 45;
+  let FAR = opts.far ?? 480;
   const { near: geoN, far: geoF } = buildGeometry();
   const data = new Float32Array(TEX_W * 4 * Math.max(1, capacity));
   const tex = new THREE.DataTexture(data, TEX_W, Math.max(1, capacity), THREE.RGBAFormat, THREE.FloatType);
@@ -786,6 +787,10 @@ export function createFigures(scene, capacity, opts = {}) {
   };
   return {
     meshes: [near, far],
+    // view distance in metres (phones shorten it in flight, where people are specks)
+    setFar(v) {
+      FAR = v;
+    },
     visible, // [near, far] drawn last frame
     get count() {
       return n;

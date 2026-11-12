@@ -1,7 +1,7 @@
 // js/features/detail.js — after the city is built, splits every static instanced set (tagged userData.static by the
 // module that made it: 'prop', 'pole' or 'car') into tiles, then hides tiles beyond their view distance as you move.
 // See js/tiles.js.
-import { tileStatic, chunkMesh, updateTiles, tileCount } from '../tiles.js';
+import { tileStatic, chunkMesh, updateTiles, tileCount, PHONE } from '../tiles.js';
 
 export default {
   init(ctx) {
@@ -22,6 +22,7 @@ export default {
     if (ctx.perf) console.info(`[harare] ${sets.length} static sets → ${n} tiles (${tileCount()} culled by distance); ${big.length} ground layers → ${c} chunks`);
   },
   update(dt, ctx) {
-    updateTiles(ctx.camera);
+    // From the air on a phone, kerb props and poles are specks: pull their view distance in (people: see main.js)
+    updateTiles(ctx.camera, PHONE && ctx.controls.mode === 'fly' ? 0.6 : 1);
   },
 };

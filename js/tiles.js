@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 
 const tiles = [];
-const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+export const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 // View distances in metres, [desktop, phone]
 export const FAR = {
@@ -117,13 +117,13 @@ export function chunkMesh(mesh, size = 1500) {
   return out;
 }
 
-// Once a frame: hide tiles beyond their view distance
+// Once a frame: hide tiles beyond their view distance (times `k`, which phones shorten in flight)
 let frame = 0;
-export function updateTiles(camera) {
+export function updateTiles(camera, k = 1) {
   if ((frame++ & 3) !== 0) return; // a few times a second is plenty
   const p = camera.position;
   for (const t of tiles) {
-    const dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z, lim = t.far + t.r;
+    const dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z, lim = t.far * k + t.r;
     t.mesh.visible = dx * dx + dy * dy + dz * dz < lim * lim;
   }
 }
