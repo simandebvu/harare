@@ -273,7 +273,14 @@ async function init() {
   setMode('walk');
 
   // Feature modules get one shared context. Fields are stable API for js/features/*.
+  // ?perf=1: per-frame timings for the test panel (js/features/perf.js)
+  const perf = new URLSearchParams(location.search).has('perf') ? { log: [], noLabels: false, } : null;
   const ctx = {
+    perf,
+    // test panel: change the render resolution
+    setPixelRatio(r) { renderer.setPixelRatio(r); renderer.setSize(innerWidth, innerHeight); post.setSize(innerWidth, innerHeight); },
+    get userQuality() { return userQuality; },
+    set userQuality(v) { userQuality = v; },
     // the next rendered frame as a 2D canvas
     snapshot: () => new Promise((done) => shotQueue.push(done)),
     THREE, DATA, scene, camera, renderer, post, sun, sky, clouds, detailedCrowd, contacts,
@@ -339,6 +346,7 @@ async function init() {
   function frame() {
     // A hidden tab stops the loop; the first frame back must not replay the whole absence in one step
     const raw = timer.getDelta(), dt = Math.min(raw, 0.1);
+    const t0 = perf && performance.now();
     controls.update(dt, nightness);
     camera.updateMatrixWorld(); // cull people and cars against this frame's view, not last frame's
     traffic.update(dt, nightness);
@@ -393,7 +401,9 @@ async function init() {
       where.textContent = street ? `📍 ${street}` : '';
     }
 
+    const t1 = perf && performance.now();
     post.render();
+    const t2 = perf && performance.now();
     // Photo mode and the chaos report grab the frame here, straight after drawing it (the canvas keeps no buffer)
     if (shotQueue.length) {
       const c = renderer.domElement, shot = document.createElement('canvas');
@@ -402,9 +412,13 @@ async function init() {
       shot.getContext('2d').drawImage(c, 0, 0);
       for (const done of shotQueue.splice(0)) done(shot);
     }
-    if (labels.visible) {
+    if (labels.visible && !perf?.noLabels) {
       labelRenderer.render(scene, camera);
       if ((declutterT -= dt) < 0) (declutterT = 0.2), declutterLabels();
+    }
+    if (perf) {
+      perf.log.push(raw * 1000, t1 - t0, t2 - t1, performance.now() - t2);
+      if (perf.log.length > 4 * 600) perf.log.splice(0, 4 * 300);
     }
   }
   await step('warming up the engine…'); // the first frame compiles every shader
