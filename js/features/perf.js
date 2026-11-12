@@ -34,7 +34,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
     el.innerHTML = `<pre></pre>
 <div class="row"><button data-t="blur">Glass</button><button data-t="labels">Labels</button><button data-q="2">AO+bloom</button><button data-q="1">Bloom</button><button data-q="0">No fx</button></div>
 <div class="row"><button data-r="${this.base.res}">Res ${this.base.res}x</button><button data-r="1">1x</button><button data-r="0.75">0.75x</button></div>
-<div class="row keep"><button data-a="test">Run test</button><button data-a="copy">Copy report</button><button data-a="min">Hide</button></div>`;
+<div class="row keep"><button data-a="play">Record play</button><button data-a="test">Run test</button><button data-a="copy">Copy report</button><button data-a="min">Hide</button></div>`;
     this.out = el.querySelector('pre');
     document.body.appendChild(el);
     el.addEventListener('click', (e) => {
@@ -44,6 +44,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
       else if (b.dataset.q) this.apply({ quality: +b.dataset.q });
       else if (b.dataset.r) this.apply({ res: +b.dataset.r });
       else if (b.dataset.a === 'test') this.runTest();
+      else if (b.dataset.a === 'play') this.recordPlay();
       else if (b.dataset.a === 'copy') this.copy();
       else if (b.dataset.a === 'min') el.classList.toggle('min');
     });
@@ -51,7 +52,32 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
     this.device = `${navigator.userAgent}\nGPU ${dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '?'} · dpr ${devicePixelRatio} · screen ${innerWidth}x${innerHeight}`;
     this.results = [];
     this.t = 0;
+    // Browsers and phones slow a page down once nobody has touched it for a while, so every result notes how long it
+    // had been since the last touch or key press.
+    this.lastInput = performance.now();
+    for (const ev of ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'keydown']) addEventListener(ev, () => (this.lastInput = performance.now()), { capture: true, passive: true });
     this.paint();
+  },
+
+  idle() {
+    return (performance.now() - this.lastInput) / 1000;
+  },
+
+  // 30 seconds of normal play, measured in 5-second slices
+  async recordPlay() {
+    if (this.testing) return;
+    this.testing = true;
+    this.results = [];
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let k = 0; k < 6; k++) {
+      this.status = `recording: play normally (${30 - k * 5}s left)`;
+      this.ctx.perf.log.length = 0;
+      let maxIdle = 0;
+      for (let i = 0; i < 10; i++) await wait(500), (maxIdle = Math.max(maxIdle, this.idle()));
+      this.results.push([`play ${k * 5}-${k * 5 + 5}s`, this.stats(5), maxIdle]);
+    }
+    this.testing = false;
+    this.status = 'done: tap Copy report';
   },
 
   apply(s) {
@@ -105,7 +131,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
       await wait(1200);
       this.ctx.perf.log.length = 0;
       await wait(3500);
-      this.results.push([c.name, this.stats(3.5)]);
+      this.results.push([c.name, this.stats(3.5), this.idle()]);
     }
     this.apply(this.base);
     this.testing = false;
@@ -114,7 +140,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
 
   report() {
     const now = this.stats(3);
-    return `Harare3D perf report\n${this.device}\nnow (${JSON.stringify(this.cur)}): ${now ? this.line(now) : '-'}\n` + this.results.map(([n, s]) => `${n.padEnd(22)} ${s ? this.line(s) : '-'}`).join('\n');
+    return `Harare3D perf report\n${this.device}\nnow (${JSON.stringify(this.cur)}): ${now ? this.line(now) : '-'}\n` + this.results.map(([n, s, idle]) => `${n.padEnd(22)} ${s ? this.line(s) : '-'} · ${idle.toFixed(0)}s since last touch`).join('\n');
   },
 
   async copy() {
@@ -135,6 +161,6 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
     this.out.textContent =
       (this.status ? this.status + '\n' : '') +
       (s ? this.line(s) : 'measuring…') +
-      (this.results.length ? '\n' + this.results.map(([n, r]) => `${n}: ${r ? r.fps.toFixed(0) + ' fps, 95% ' + r.p95.toFixed(0) + ' ms' : '-'}`).join('\n') : '');
+      (this.results.length ? '\n' + this.results.map(([n, r, idle]) => `${n}: ${r ? r.fps.toFixed(0) + ' fps, 95% ' + r.p95.toFixed(0) + ' ms' : '-'} (${idle.toFixed(0)}s idle)`).join('\n') : '');
   },
 };
