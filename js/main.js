@@ -343,6 +343,7 @@ async function init() {
   const frameTimes = [];
   let frameSum = 0;
   let userQuality = false;
+  let phoneFly = false, thinShadows = false, shadowTick = 0; // phones in flight: see the loop
   addEventListener('keydown', (e) => e.code === 'KeyP' && (userQuality = true));
   const shadowFocus = new THREE.Vector3(), shadowRight = new THREE.Vector3(), shadowUp = new THREE.Vector3();
   const worldUp = new THREE.Vector3(0, 1, 0);
@@ -376,6 +377,23 @@ async function init() {
       const fly = controls.mode === 'fly';
       people.figures.setFar(fly ? 250 : 480);
       people.figures.meshes[1].castShadow = !fly;
+      // Measured on an iPhone hovering over town (perf panel Fly test): 26 fps as is, 39 fps at 1x resolution with no
+      // bloom and no shadow pass. From up there the difference is hard to see, so phones fly like that, except that
+      // shadows are still redrawn every third frame (the sun barely moves, cars below are specks). Back to normal on landing.
+      if (fly !== phoneFly && !userQuality) {
+        phoneFly = fly;
+        post.setQuality(fly ? 0 : 1);
+        ctx.setPixelRatio(fly ? 1 : Math.min(devicePixelRatio, 1.5));
+      }
+      const thin = fly && !userQuality && sun.intensity > 0.01;
+      if (thin) {
+        renderer.shadowMap.autoUpdate = false;
+        if (++shadowTick % 3 === 0) renderer.shadowMap.needsUpdate = true;
+      } else if (thinShadows) {
+        renderer.shadowMap.autoUpdate = sun.intensity > 0.01;
+        renderer.shadowMap.needsUpdate = true;
+      }
+      thinShadows = thin;
     }
 
     // Shadow frustum follows what you're looking at

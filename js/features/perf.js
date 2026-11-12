@@ -21,20 +21,33 @@ const OFF = {
   suburbs: { each: (c) => (byName(c, 'suburbs').visible = false), undo: (c) => (byName(c, 'suburbs').visible = true) },
   trees: { each: (c) => (byName(c, 'trees').visible = false), undo: (c) => (byName(c, 'trees').visible = true) },
   clouds: { each: (c) => (c.clouds.mesh.visible = false), undo: (c) => (c.clouds.mesh.visible = true) },
+  buildings: { each: (c) => (c.buildings.mesh.visible = false), undo: (c) => (c.buildings.mesh.visible = true) },
+  ground: { each: (c) => (c.world.group.visible = false), undo: (c) => (c.world.group.visible = true) },
+  // street props, poles and parked cars (tiles), plus the traffic
+  props: {
+    each(c) {
+      c.scene.traverse((o) => o.userData.tile && (o.visible = false));
+      for (const o of c.scene.children) if (/^detailed-traffic/.test(o.name)) o.visible = false;
+    },
+    undo: (c) => c.scene.children.forEach((o) => /^detailed-traffic/.test(o.name) && (o.visible = true)),
+  },
   everything: { each: (c) => c.camera.layers.disableAll(), undo: (c) => c.camera.layers.set(0) },
 };
 // One step that switches several things off at once
 const off = (name, keys, set) => ({ name, set, each: (c) => keys.forEach((k) => OFF[k].each(c)), undo: (c) => keys.forEach((k) => OFF[k].undo(c)) });
 // A phone frame that misses the display's 16.7 ms beat waits for the next one, so 17 ms and 33 ms both show as 30 fps:
 // single suspects barely move the number, and the steps below stack them to find what gets back under the line.
+// The phones' flight settings (1x, no bloom, shadows thinned) took an iPhone from 26 to ~39 fps; the steps after the
+// first two stack more off on top of 1x / no bloom / no shadow pass, to find what still stands between that and 60.
+const LITE = { res: 1, quality: 0 };
 const FLY = [
   { name: 'in the air, as is' },
-  off('1x, no shadow pass', ['shadows'], { res: 1 }),
-  off('1x, no bloom', [], { res: 1, quality: 0 }),
-  off('1x, no bloom, no shadow', ['shadows'], { res: 1, quality: 0 }),
-  off('+ no suburbs', ['shadows', 'suburbs'], { res: 1, quality: 0 }),
-  off('+ no trees', ['shadows', 'suburbs', 'trees'], { res: 1, quality: 0 }),
-  off('+ no labels, 0.75x', ['shadows', 'suburbs', 'trees'], { res: 0.75, quality: 0, labels: false }),
+  off('1x, no bloom, no shadow', ['shadows'], LITE),
+  off('+ no buildings', ['shadows', 'buildings'], LITE),
+  off('+ no ground or streets', ['shadows', 'ground'], LITE),
+  off('+ no props or cars', ['shadows', 'props'], LITE),
+  off('+ no trees or suburbs', ['shadows', 'trees', 'suburbs'], LITE),
+  off('+ no frosted glass', ['shadows'], { ...LITE, blur: false }),
   off('nothing drawn (fx only)', ['everything']),
 ];
 
@@ -163,6 +176,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
       c.undo?.(this.ctx);
     }
     this.apply(this.base);
+    this.ctx.userQuality = false; // back to the game's own settings (phones change some in flight)
     this.testing = false;
     this.status = 'done: tap Copy report';
   },
