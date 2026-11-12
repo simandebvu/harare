@@ -8,7 +8,7 @@ export default {
     const sets = [];
     ctx.scene.traverse((o) => o.isInstancedMesh && o.userData.static && sets.push(o));
     let n = 0;
-    for (const m of sets) n += tileStatic(m, { kind: m.userData.static, size: m.userData.static === 'car' ? 400 : 300 }).length;
+    for (const m of sets) n += tileStatic(m, { kind: m.userData.static, size: 450 }).length;
     // CBD ground and road layers (tagged userData.chunk in js/world.js), when big and spread out
     const big = [];
     ctx.scene.traverse((o) => {

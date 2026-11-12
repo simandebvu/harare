@@ -73,7 +73,7 @@ async function init() {
   // the graphics chip, and switching AO off mid-game is what stalls (so it's decided here, before the shader warm-up)
   const phone = matchMedia('(pointer: coarse)').matches;
   const post = createPost(renderer, scene, camera, { samples: phone ? 0 : 4 });
-  if (phone) post.setQuality(1), sun.shadow.mapSize.set(2048, 2048); // the on-foot shadow span is only ±130 m
+  if (phone) post.setQuality(1);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = new THREE.Scene();
@@ -374,9 +374,10 @@ async function init() {
     const p = controls.position;
     // Snap in the light's image plane: world-axis snapping makes shadows jump when driving.
     const focus = shadowFocus.set(p.x, 0, p.z);
-    const span = controls.mode === 'fly' ? Math.round(Math.min(700, Math.max(200, camera.position.distanceTo(focus))) / 100) * 100 : 130;
-    // 4096² only pays off over the wide flight frustum; at street level 2048² still gives ~13 cm texels for a quarter of the fill
-    const mapSize = controls.mode === 'fly' ? 4096 : 2048;
+    const span = controls.mode === 'fly' ? Math.round(Math.min(phone ? 400 : 700, Math.max(200, camera.position.distanceTo(focus))) / 100) * 100 : 130;
+    // 4096² only pays off over the wide flight frustum; at street level 2048² still gives ~13 cm texels for a quarter of the
+    // fill. Phones stay at 2048² in the air too: 4096² there (16.7 M depth pixels a frame) cut an iPhone from 60 to 20 fps.
+    const mapSize = controls.mode === 'fly' && !phone ? 4096 : 2048;
     if (sun.shadow.mapSize.x !== mapSize) {
       sun.shadow.mapSize.set(mapSize, mapSize);
       sun.shadow.map?.dispose();
