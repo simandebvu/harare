@@ -37,17 +37,16 @@ const OFF = {
 const off = (name, keys, set) => ({ name, set, each: (c) => keys.forEach((k) => OFF[k].each(c)), undo: (c) => keys.forEach((k) => OFF[k].undo(c)) });
 // A phone frame that misses the display's 16.7 ms beat waits for the next one, so 17 ms and 33 ms both show as 30 fps:
 // single suspects barely move the number, and the steps below stack them to find what gets back under the line.
-// The phones' flight settings (1x, no bloom, shadows thinned) took an iPhone from 26 to ~39 fps; the steps after the
-// first two stack more off on top of 1x / no bloom / no shadow pass, to find what still stands between that and 60.
+// Is a phone in flight held back by the number of draw requests, or by the pixels they fill? '0.1x' keeps every
+// request (and every triangle) but leaves almost no pixels to fill. If it is still slow, the requests are the cost.
 const LITE = { res: 1, quality: 0 };
 const FLY = [
   { name: 'in the air, as is' },
   off('1x, no bloom, no shadow', ['shadows'], LITE),
-  off('+ no buildings', ['shadows', 'buildings'], LITE),
-  off('+ no ground or streets', ['shadows', 'ground'], LITE),
-  off('+ no props or cars', ['shadows', 'props'], LITE),
-  off('+ no trees or suburbs', ['shadows', 'trees', 'suburbs'], LITE),
-  off('+ no frosted glass', ['shadows'], { ...LITE, blur: false }),
+  off('0.1x, no bloom, no shadow', ['shadows'], { res: 0.1, quality: 0 }),
+  off('0.1x, no bloom', [], { res: 0.1, quality: 0 }),
+  off('1x, no buildings', ['shadows', 'buildings'], LITE),
+  off('1x, no props or cars', ['shadows', 'props'], LITE),
   off('nothing drawn (fx only)', ['everything']),
 ];
 

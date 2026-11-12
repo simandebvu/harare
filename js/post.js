@@ -76,17 +76,25 @@ export function createPost(renderer, scene, camera, { samples = 4 } = {}) {
   composer.addPass(grade);
   composer.addPass(fxaa);
 
-  let quality = 2;
+  let quality = 2, lite = false, night = 0;
   function setQuality(q) {
     quality = q;
     gtao.enabled = q >= 2;
   }
+  // Phones in flight skip the bloom (a chain of blur passes) by day, when it only adds a faint glint. The rest of the
+  // chain stays: dropping to quality 0 would draw straight to the screen, which needs different builds of every shader
+  // (a long freeze on an iPhone) and loses the colour grade.
+  const syncBloom = () => (bloom.enabled = !(lite && night < 0.3));
 
   return {
     get quality() {
       return quality;
     },
     setQuality,
+    setLite(v) {
+      lite = v;
+      syncBloom();
+    },
     render() {
       if (quality === 0) renderer.render(scene, camera);
       else composer.render();
@@ -100,6 +108,8 @@ export function createPost(renderer, scene, camera, { samples = 4 } = {}) {
       gtao.setSize(Math.round((w * pr) / 2), Math.round((h * pr) / 2));
     },
     setNight(n) {
+      night = n;
+      syncBloom();
       bloom.strength = 0.1 + n * 0.45;
       bloom.threshold = 1.0 - n * 0.25;
       grade.uniforms.uWarm.value = 0.32 * (1 - n) + 0.12;

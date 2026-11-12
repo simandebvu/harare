@@ -378,11 +378,12 @@ async function init() {
       people.figures.setFar(fly ? 250 : 480);
       people.figures.meshes[1].castShadow = !fly;
       // Measured on an iPhone hovering over town (perf panel Fly test): 26 fps as is, 39 fps at 1x resolution with no
-      // bloom and no shadow pass. From up there the difference is hard to see, so phones fly like that, except that
-      // shadows are still redrawn every third frame (the sun barely moves, cars below are specks). Back to normal on landing.
+      // bloom and no shadow pass. From up there the difference is hard to see, so phones fly at 1x with no daytime bloom
+      // (see post.setLite), and shadows redrawn every third frame (the sun barely moves, cars below are specks). Back to
+      // normal on landing.
       if (fly !== phoneFly && !userQuality) {
         phoneFly = fly;
-        post.setQuality(fly ? 0 : 1);
+        post.setLite(fly);
         ctx.setPixelRatio(fly ? 1 : Math.min(devicePixelRatio, 1.5));
       }
       const thin = fly && !userQuality && sun.intensity > 0.01;
