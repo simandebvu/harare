@@ -1,4 +1,4 @@
-// js/main.js — Harare 3D: a procedural Harare CBD from OpenStreetMap, in three.js
+// js/main.js — Harare3D: a procedural Harare CBD from OpenStreetMap, in three.js
 import * as THREE from 'three';
 import { createCollisionWorld } from './collision-world.js';
 import { createCrowdModels } from './crowd-models.js';

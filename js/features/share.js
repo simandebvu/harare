@@ -54,11 +54,11 @@ export default {
 
   async share() {
     const url = this.link(), street = this.ctx.chaos?.street?.() || 'the CBD';
-    const text = `I'm on ${street} in Harare 3D. Come find me:`;
+    const text = `I'm on ${street} in Harare3D. Come find me:`;
     track('share');
     try {
       if (navigator.share && matchMedia('(pointer:coarse)').matches) {
-        await navigator.share({ title: 'Harare 3D', text, url });
+        await navigator.share({ title: 'Harare3D', text, url });
         return;
       }
       await navigator.clipboard.writeText(`${text} ${url}`);
