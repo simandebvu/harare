@@ -69,7 +69,11 @@ async function init() {
   scene.add(hemi);
   scene.fog = new THREE.FogExp2('#c8c2b4', 0.00028);
   const clouds = createClouds(scene);
-  const post = createPost(renderer, scene, camera);
+  // Phones: no multisampling and no ambient occlusion from the start. Measured on an iPhone 17 Pro the frame was bound by
+  // the graphics chip, and switching AO off mid-game is what stalls (so it's decided here, before the shader warm-up)
+  const phone = matchMedia('(pointer: coarse)').matches;
+  const post = createPost(renderer, scene, camera, { samples: phone ? 0 : 4 });
+  if (phone) post.setQuality(1);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = new THREE.Scene();
@@ -422,6 +426,29 @@ async function init() {
     }
   }
   await step('warming up the engine…'); // the first frame compiles every shader
+  // ...but only for what is on screen. Detailed cars, crowd figures, the powers' throwable cars and other pooled models
+  // wait hidden until they come near, and each one's first appearance used to compile its shaders mid-game: a hitch
+  // on phones, a long one on iPhones. So draw one full frame now, behind the loading screen, with every hidden model
+  // shown and nothing culled: that builds exactly the shader variants the real pipeline uses (effects buffer, shadow
+  // map, ambient occlusion), which renderer.compile() does not. Lights stay as they are (their count is part of the key).
+  await Promise.race([ctx.powers?.loaded, new Promise((r) => setTimeout(r, 6000))]);
+  {
+    const shown = [], unculled = [];
+    scene.traverse((o) => {
+      if (o.isLight) return;
+      if (!o.visible) shown.push(o), (o.visible = true);
+      if (o.frustumCulled) unculled.push(o), (o.frustumCulled = false);
+    });
+    try {
+      post.render();
+    } catch (e) {
+      console.warn('[harare] shader warm-up', e);
+    } finally {
+      for (const o of shown) o.visible = false;
+      for (const o of unculled) o.frustumCulled = true;
+    }
+    dispatchEvent(new Event('harare:warmed'));
+  }
   frame();
   renderer.setAnimationLoop(frame);
   document.getElementById('loading').classList.add('done');

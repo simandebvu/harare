@@ -323,7 +323,8 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
 
   // --- simulation ---------------------------------------------------------------------------------------------------------
   const tmp = {};
-  let time = 0;
+  let time = 0, frameN = 0;
+  const LOD_NEAR2 = 160 * 160, LOD_FAR2 = 400 * 400;
   const ease = (cur, target, k) => cur + (target - cur) * k;
 
   let hourT = 0, kidsHome = false;
@@ -345,10 +346,26 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     const lights = STREET.lights, st = STREET.time;
     const kA = Math.min(1, dt * 4);
 
+    // Far from the camera nobody can see a stride: those people update every fourth frame (every eighth beyond
+    // 400 m), catching up the skipped time in one step. dt < 0 means skip this frame
+    frameN++;
+    const dtF = dt;
+    const lodDt = (p, i) => {
+      if (!Number.isFinite(p.x)) return dtF;
+      const d2 = (p.x - camX) ** 2 + (p.z - camZ) ** 2, n = d2 > LOD_FAR2 ? 7 : d2 > LOD_NEAR2 ? 3 : 0;
+      if (n && (frameN + i) & n) return (p.lag = (p.lag || 0) + dtF), -1;
+      const t = Math.min(0.5, dtF + (p.lag || 0));
+      p.lag = 0;
+      return t;
+    };
+
     // Pavement walkers
     for (let wi = 0; wi < walkers.length; wi++) {
       const p = walkers[wi];
       if(p.hidden)continue;
+      const dt = lodDt(p, wi);
+      if (dt < 0) continue;
+      const kA = Math.min(1, dt * 4);
       const oE=p.e,oD=p.d,oDir=p.dir;
       const oldX=p.x,oldZ=p.z;
       let E = edges[p.e];
@@ -423,6 +440,9 @@ export function createPeople(scene, DATA, blocked, count = 2600) {
     // Rank crowds and touts
     for (let k = 0; k < loiter.length; k++) {
       const p = loiter[k];
+      const dt = lodDt(p, k);
+      if (dt < 0) continue;
+      const kA = Math.min(1, dt * 4);
       const oldX=p.x,oldZ=p.z;
       p.t -= dt;
       if (p.moving) {

@@ -26,13 +26,32 @@ function fillBody(o,car) {
   o.x=car.x;o.z=car.z;o.yaw=yaw;o.sin=Math.sin(yaw);o.cos=Math.cos(yaw);
   o.hl=(car.len||4.9)/2;o.hw=(car.width||1.9)/2;o.owner=car;return o;
 }
+// One collision body per car, refreshed in place each frame (a new object per car per frame fed the garbage collector)
+const bodies=new WeakMap();
 function body(car) {
-  return {x:car.x,z:car.z,yaw:car.h??car.yaw,sin:Math.sin(car.h??car.yaw),cos:Math.cos(car.h??car.yaw),
-    hl:(car.len||4.9)/2,hw:(car.width||1.9)/2,owner:car};
+  let b=bodies.get(car);
+  if(!b)bodies.set(car,(b={x:0,z:0,yaw:0,sin:0,cos:0,hl:0,hw:0,owner:car}));
+  return fillBody(b,car);
+}
+// A grid rebuilt every frame: remembers which cells it filled and empties only those (clearing every cell the city's
+// thousands of walkers had ever stepped in cost more than all the inserts)
+class FrameGrid {
+  constructor(cell){this.cell=cell;this.map=new Map();this.used=[];}
+  key(i,j){return i*100003+j;}
+  clear(){for(const b of this.used)b.length=0;this.used.length=0;}
+  insert(item,x0,z0,x1,z1){
+    const c=this.cell;
+    for(let i=Math.floor(x0/c);i<=Math.floor(x1/c);i++)for(let j=Math.floor(z0/c);j<=Math.floor(z1/c);j++){
+      const k=i*100003+j;let b=this.map.get(k);
+      if(!b)this.map.set(k,(b=[]));
+      if(!b.length)this.used.push(b);
+      b.push(item);
+    }
+  }
 }
 export function createCollisionWorld(traffic, people, controls) {
   // statics: thousands of posts, fins and lot walls line the pavements, so small cells keep each query to a few boxes
-  const vehicles=new Grid(8),pedestrians=new Grid(4),statics=new Grid(2);
+  const vehicles=new FrameGrid(8),pedestrians=new FrameGrid(4),statics=new Grid(2);
   function insertVehicle(car) {
     const b=body(car),r=Math.hypot(b.hl,b.hw)+4;
     vehicles.insert(b,b.x-r,b.z-r,b.x+r,b.z+r);
@@ -47,13 +66,16 @@ export function createCollisionWorld(traffic, people, controls) {
       statics.insert(b,x-ex,z-ez,x+ex,z+ez);
     },
     refresh() {
-      for(const b of vehicles.map.values())b.length=0;
-      for(const b of pedestrians.map.values())b.length=0;
+      vehicles.clear();
+      pedestrians.clear();
       for(const car of traffic.cars)if(car.init&&!(car.away>0))insertVehicle(car);
       for(const car of traffic.parkedCars)if(!(car.away>0))insertVehicle(car);
       if(controls.kombi.visible && !(controls.car.alt>=4.6))insertVehicle(controls.car);
+      // People more than 400 m from the camera stay out of the grid: out there nobody can see a walker brush past
+      // another or a car not wait for one, and they are most of the city's crowd
+      const v=controls.camera?.position,vx=v?.x??0,vz=v?.z??0,far2=v?400*400:Infinity;
       for(const list of [people.walkers,people.loiter,people.hawkerList])for(const p of list) {
-        if(Number.isFinite(p.x)&&!p.hidden)pedestrians.insert(p,p.x-.28,p.z-.28,p.x+.28,p.z+.28);
+        if(Number.isFinite(p.x)&&!p.hidden&&(p.x-vx)**2+(p.z-vz)**2<far2)pedestrians.insert(p,p.x-.28,p.z-.28,p.x+.28,p.z+.28);
       }
       if(controls.mode==='walk') {
         const p=controls.walk;pedestrians.insert(p,p.x-.3,p.z-.3,p.x+.3,p.z+.3);

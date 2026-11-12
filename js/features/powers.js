@@ -26,8 +26,8 @@ export default {
     this.v = { a: new T.Vector3(), b: new T.Vector3(), q: new T.Quaternion(), q2: new T.Quaternion(), e: new T.Euler() };
     this.models = {};
     this.pool = {};
-    Promise.all(Object.entries(GLB).map(([type, file]) => glb(file).then((g) => g && (this.models[type] = g.scene)))).then(() =>
-      (window.requestIdleCallback || setTimeout)(() => this.prewarm()));
+    // main.js waits for this (briefly) before its shader warm-up frame, which compiles the pooled bodies with the rest
+    this.loaded = Promise.all(Object.entries(GLB).map(([type, file]) => glb(file).then((g) => g && (this.models[type] = g.scene)))).then(() => this.prewarm());
     this.buildParticles();
     this.buildShockwave();
     ctx.powers = this;
@@ -313,14 +313,16 @@ export default {
       const pool = (this.pool[type] ||= []);
       while (pool.length < (type === 'kombi' ? 8 : 3)) pool.push(this.makeBody(type));
     }
-    // Compile their shaders now, off to one side, so the first slam doesn't stall on it
-    const T = this.T, stage = new T.Group();
+    // Park them in the scene, hidden, for main.js's warm-up frame to compile (so the first slam doesn't stall on it)
+    const stage = new this.T.Group();
+    stage.visible = false;
     for (const pool of Object.values(this.pool)) for (const b of pool) stage.add(b.root);
     this.ctx.scene.add(stage);
-    this.ctx.renderer.compileAsync(stage, this.ctx.camera, this.ctx.scene).catch(() => {}).finally(() => {
+    const done = () => {
       this.ctx.scene.remove(stage);
-      for (const pool of Object.values(this.pool)) for (const b of pool) stage.remove(b.root);
-    });
+      for (const pool of Object.values(this.pool)) for (const b of pool) if (b.root.parent === stage) stage.remove(b.root);
+    };
+    addEventListener('harare:warmed', done, { once: true });
   },
 
   makeBody(type) {

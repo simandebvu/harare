@@ -299,10 +299,12 @@ export function createTraffic(scene, DATA, count = 650) {
     return 0;
   }
 
+  let tick = 0;
   const FAR_SWEEP2 = 180 * 180; // beyond this from the camera, cars skip collision sweeps
   function update(dt, nightness) {
     dt = Math.min(dt, 0.1);
     time += dt;
+    tick++;
     STREET.time = time;
 
     [jWait, jWaitNext] = [jWaitNext, jWait];
@@ -402,7 +404,10 @@ export function createTraffic(scene, DATA, count = 650) {
       }
       if(car.init&&contacts) {
         const look=Math.min(14,2+car.v*car.v/16);
-        const g=contacts.trafficGap(car,look)+1.8;
+        // Far from the camera the physical look-ahead runs every third frame; in between, the last gap shrinks by
+        // what we drove since (the car ahead only ever opens it up, so this errs on the side of braking)
+        const farCar=vp&&(car.x-vp.x)**2+(car.z-vp.z)**2>FAR_SWEEP2;
+        const g=farCar&&(tick+car.ri)%3&&car.gapC!==undefined?(car.gapC-=car.v*dt):(car.gapC=contacts.trafficGap(car,look)+1.8);
         // the player's abandoned kombi blocking the lane: wait a moment, then edge round it (it's ignored for 2 s)
         car.parkedT=car.heldByParked&&car.v<.5?(car.parkedT||0)+dt:0;
         if(car.parkedT>4){car.parkedT=0;car.ghostT=2;jamStats.ghosts++;}

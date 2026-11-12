@@ -38,9 +38,10 @@ const GradeShader = {
     }`,
 };
 
-export function createPost(renderer, scene, camera) {
+// samples: multisample anti-aliasing of the scene buffer (phones pass 0 and rely on the FXAA pass at the end)
+export function createPost(renderer, scene, camera, { samples = 4 } = {}) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-  const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+  const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples });
   const composer = new EffectComposer(renderer, target);
 
   const renderPass = new RenderPass(scene, camera);
