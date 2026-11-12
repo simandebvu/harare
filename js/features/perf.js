@@ -16,16 +16,26 @@ const CONFIGS = [
 // Fly test: hover in the air and keep still while each suspect is switched off on its own. `each` runs every frame
 // while the step is on (the game would otherwise switch some of these back), `undo` puts it back.
 const byName = (ctx, n) => ctx.scene.getObjectByName(n);
+const OFF = {
+  shadows: { each: (c) => ((c.renderer.shadowMap.autoUpdate = false), (c.renderer.shadowMap.needsUpdate = false)), undo: (c) => (c.renderer.shadowMap.autoUpdate = true) },
+  suburbs: { each: (c) => (byName(c, 'suburbs').visible = false), undo: (c) => (byName(c, 'suburbs').visible = true) },
+  trees: { each: (c) => (byName(c, 'trees').visible = false), undo: (c) => (byName(c, 'trees').visible = true) },
+  clouds: { each: (c) => (c.clouds.mesh.visible = false), undo: (c) => (c.clouds.mesh.visible = true) },
+  everything: { each: (c) => c.camera.layers.disableAll(), undo: (c) => c.camera.layers.set(0) },
+};
+// One step that switches several things off at once
+const off = (name, keys, set) => ({ name, set, each: (c) => keys.forEach((k) => OFF[k].each(c)), undo: (c) => keys.forEach((k) => OFF[k].undo(c)) });
+// A phone frame that misses the display's 16.7 ms beat waits for the next one, so 17 ms and 33 ms both show as 30 fps:
+// single suspects barely move the number, and the steps below stack them to find what gets back under the line.
 const FLY = [
   { name: 'in the air, as is' },
-  { name: 'no shadow pass', each: (c) => ((c.renderer.shadowMap.autoUpdate = false), (c.renderer.shadowMap.needsUpdate = false)), undo: (c) => (c.renderer.shadowMap.autoUpdate = true) },
-  { name: 'no suburbs', each: (c) => (byName(c, 'suburbs').visible = false), undo: (c) => (byName(c, 'suburbs').visible = true) },
-  { name: 'no trees', each: (c) => (byName(c, 'trees').visible = false), undo: (c) => (byName(c, 'trees').visible = true) },
-  { name: 'no clouds', each: (c) => (c.clouds.mesh.visible = false), undo: (c) => (c.clouds.mesh.visible = true) },
-  { name: 'no bloom', set: { quality: 0 } },
-  { name: 'resolution 1x', set: { res: 1 } },
-  { name: 'resolution 0.75x', set: { res: 0.75 } },
-  { name: 'nothing drawn (fx only)', each: (c) => c.camera.layers.disableAll(), undo: (c) => c.camera.layers.set(0) },
+  off('1x, no shadow pass', ['shadows'], { res: 1 }),
+  off('1x, no bloom', [], { res: 1, quality: 0 }),
+  off('1x, no bloom, no shadow', ['shadows'], { res: 1, quality: 0 }),
+  off('+ no suburbs', ['shadows', 'suburbs'], { res: 1, quality: 0 }),
+  off('+ no trees', ['shadows', 'suburbs', 'trees'], { res: 1, quality: 0 }),
+  off('+ no labels, 0.75x', ['shadows', 'suburbs', 'trees'], { res: 0.75, quality: 0, labels: false }),
+  off('nothing drawn (fx only)', ['everything']),
 ];
 
 export default {
