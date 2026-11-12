@@ -58,6 +58,7 @@ export function createClouds(scene) {
   scene.add(mesh);
 
   return {
+    mesh,
     update(dt, camera) {
       uniforms.uTime.value += dt;
       mesh.position.x = camera.position.x;

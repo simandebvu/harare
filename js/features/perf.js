@@ -13,6 +13,21 @@ const CONFIGS = [
   { name: 'everything light', set: { blur: false, labels: false, quality: 0, res: 0.75 } },
 ];
 
+// Fly test: hover in the air and keep still while each suspect is switched off on its own. `each` runs every frame
+// while the step is on (the game would otherwise switch some of these back), `undo` puts it back.
+const byName = (ctx, n) => ctx.scene.getObjectByName(n);
+const FLY = [
+  { name: 'in the air, as is' },
+  { name: 'no shadow pass', each: (c) => ((c.renderer.shadowMap.autoUpdate = false), (c.renderer.shadowMap.needsUpdate = false)), undo: (c) => (c.renderer.shadowMap.autoUpdate = true) },
+  { name: 'no suburbs', each: (c) => (byName(c, 'suburbs').visible = false), undo: (c) => (byName(c, 'suburbs').visible = true) },
+  { name: 'no trees', each: (c) => (byName(c, 'trees').visible = false), undo: (c) => (byName(c, 'trees').visible = true) },
+  { name: 'no clouds', each: (c) => (c.clouds.mesh.visible = false), undo: (c) => (c.clouds.mesh.visible = true) },
+  { name: 'no bloom', set: { quality: 0 } },
+  { name: 'resolution 1x', set: { res: 1 } },
+  { name: 'resolution 0.75x', set: { res: 0.75 } },
+  { name: 'nothing drawn (fx only)', each: (c) => c.camera.layers.disableAll(), undo: (c) => c.camera.layers.set(0) },
+];
+
 export default {
   init(ctx) {
     if (!ctx.perf) return;
@@ -34,7 +49,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
     el.innerHTML = `<pre></pre>
 <div class="row"><button data-t="blur">Glass</button><button data-t="labels">Labels</button><button data-q="2">AO+bloom</button><button data-q="1">Bloom</button><button data-q="0">No fx</button></div>
 <div class="row"><button data-r="${this.base.res}">Res ${this.base.res}x</button><button data-r="1">1x</button><button data-r="0.75">0.75x</button></div>
-<div class="row keep"><button data-a="play">Record play</button><button data-a="test">Run test</button><button data-a="copy">Copy report</button><button data-a="min">Hide</button></div>`;
+<div class="row keep"><button data-a="play">Record play</button><button data-a="test">Run test</button><button data-a="fly">Fly test</button><button data-a="copy">Copy report</button><button data-a="min">Hide</button></div>`;
     this.out = el.querySelector('pre');
     document.body.appendChild(el);
     el.addEventListener('click', (e) => {
@@ -45,6 +60,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
       else if (b.dataset.r) this.apply({ res: +b.dataset.r });
       else if (b.dataset.a === 'test') this.runTest();
       else if (b.dataset.a === 'play') this.recordPlay();
+      else if (b.dataset.a === 'fly') this.runTest(FLY, 'hover in the air');
       else if (b.dataset.a === 'copy') this.copy();
       else if (b.dataset.a === 'min') el.classList.toggle('min');
     });
@@ -120,18 +136,21 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
     }
   },
 
-  async runTest() {
+  async runTest(list = CONFIGS, hint = 'keep still') {
     if (this.testing) return;
     this.testing = true;
     this.results = [];
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-    for (const c of CONFIGS) {
+    for (const c of list) {
       this.apply({ ...this.base, ...c.set });
-      this.status = `testing: ${c.name}… keep still`;
+      this.each = c.each;
+      this.status = `testing: ${c.name}… ${hint}`;
       await wait(1200);
       this.ctx.perf.log.length = 0;
       await wait(3500);
       this.results.push([c.name, this.stats(3.5), this.idle()]);
+      this.each = null;
+      c.undo?.(this.ctx);
     }
     this.apply(this.base);
     this.testing = false;
@@ -155,6 +174,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
 
   update(dt) {
     if (!this.el) return;
+    this.each?.(this.ctx);
     if ((this.t -= dt) > 0) return;
     this.t = 0.5;
     const s = this.stats(2);
