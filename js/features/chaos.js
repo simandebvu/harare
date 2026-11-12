@@ -2,6 +2,8 @@
 // heat-vision.js); rescues lower it (catching a falling car, setting one down, punching out a fire). It eases back
 // down once things go quiet. Levels: Calm → Disturbance (the news picks it up) → Police called (sirens, red and blue
 // at the edges of the screen, light bars on the police cars) → City on alert.
+import { track } from '../analytics.js';
+
 const TIERS = [
   { at: 0, name: 'Calm', color: '#4fbf7a' },
   { at: 25, name: 'Disturbance', color: '#f2c318' },
@@ -125,7 +127,7 @@ body.gm-has-touch .chaos{width:150px;padding:5px 8px 7px;font-size:11px}
     // a little hysteresis on the way down so the sirens don't flicker on the threshold
     if (tier < this.tier && this.level > TIERS[this.tier].at - 6) tier = this.tier;
     if (tier !== this.tier) {
-      if (tier > this.tier && tier >= 2) this.headline(pick(NEWS['tier' + tier]));
+      if (tier > this.tier && tier >= 2) this.headline(pick(NEWS['tier' + tier])), track(tier >= 3 ? 'city-on-alert' : 'police-called');
       if (tier === 0 && this.tier >= 2) this.headline(pick(NEWS.calm));
       this.tier = tier;
       this.label.textContent = TIERS[tier].name;

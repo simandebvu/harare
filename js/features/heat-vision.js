@@ -3,6 +3,7 @@
 // small fire, cars overheat and blow up (js/features/powers.js does the wreck), and the crowd runs from it.
 // The aim point is found by marching the camera ray through the city's own collision queries — no mesh raycasts.
 import { groundY } from '../util.js';
+import { protectedAt } from '../protected.js';
 
 const RANGE = 170, STEP = 0.5, OVERHEAT = 0.55, MARKS = 90, MARK_LIFE = 40, FIRES = 18, FIRE_LIFE = 8;
 
@@ -152,6 +153,7 @@ export default {
     this.updateMarks(dt);
     this.updateFires(dt);
     this.hum(active, dt);
+    this.sacredT = (this.sacredT || 0) - dt;
     if (!active) {
       for (const b of this.beams) b.visible = false;
       for (const s of this.eyeGlow) s.visible = false;
@@ -189,6 +191,17 @@ export default {
     for (let k = 0; k < 3; k++) P.fire.emit(h.x, h.y + 0.1, h.z, j() * 5 + hit.normal.x * 3, 2 + Math.random() * 4, j() * 5 + hit.normal.z * 3, 0.35 + Math.random() * 0.3, 0.18, [1, 0.6, 0.25], 1, 0, 0.6, -14);
     if (Math.random() < 0.3) P.smoke.emit(h.x, h.y + 0.2, h.z, j() * 0.4, 1 + Math.random(), j() * 0.4, 1.8, 0.7, [0.25, 0.24, 0.24], 0.4, 2, 1, 0.4);
     if ((this.scareT = (this.scareT || 0) - dt) < 0) (this.scareT = 0.3), this.ctx.people.scare(h.x, h.z, 9, 0);
+    // Protected places (the Nehanda statue, Parliament, churches): the beam glances off in a gold shimmer, no scorch, no fire
+    const sacred = !hit.target || hit.target.tree !== undefined ? protectedAt(h.x, h.z) : null;
+    if (sacred) {
+      for (let k = 0; k < 2; k++) P.fire.emit(h.x, h.y + 0.1, h.z, j() * 3 + hit.normal.x * 4, 1 + Math.random() * 3, j() * 3 + hit.normal.z * 4, 0.5, 0.14, [1, 0.85, 0.4], 1, 0, 0.6, -6);
+      if (!(this.sacredT > 0) || this.sacredName !== sacred) {
+        this.sacredT = 8;
+        this.sacredName = sacred;
+        P.toast(sacred === 'Mbuya Nehanda' ? 'Mbuya Nehanda is protected · the beam glances off' : `The beam glances off ${/^(the|parliament)\b/i.test(sacred) ? sacred.replace(/^The\b/, 'the') : 'the ' + sacred}`);
+      }
+      return;
+    }
     if (hit.target?.person) {
       if ((this.zapT = (this.zapT || 0) - dt) < 0) (this.zapT = 0.4), this.ctx.people.scare(h.x, h.z, 2.5, 0.8), P.chaos(1, 'zap');
       return;
