@@ -11,6 +11,7 @@
 //   runway lights, distant Chitungwiza glow, headlight dots on the main roads — and ZESA load-shedding: a few
 //   suburbs go dark, block by block, on a rotating two-hour schedule
 // The CBD bbox (SUB.bbox) is a hole in all of it: js/world.js and friends own everything inside.
+import { chunkMesh } from '../tiles.js';
 import { groundY } from '../util.js';
 
 let THREE;
@@ -486,9 +487,7 @@ export default {
         const mat = patched({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 - offset, polygonOffsetUnits: -8 - offset * 4 }, {}, (s) => {
           s.vertexShader = s.vertexShader.replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);');
         });
-        const m = new THREE.Mesh(g, mat);
-        aoSkip(m, () => false);
-        return m;
+        return new THREE.Mesh(g, mat);
       }
     }
     const C = (h) => new THREE.Color(h);
@@ -531,6 +530,8 @@ export default {
       const m = rb.mesh(i);
       m.name = 'sub-ribbons';
       group.add(m);
+      // city-wide ribbons in 2.5 km chunks, so the camera can skip the ones behind it
+      for (const c of chunkMesh(m, 2500)) aoSkip(c, () => false);
     }
 
     busy += performance.now() - (this._t || t0);

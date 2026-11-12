@@ -186,6 +186,7 @@ export function createRobots(scene, { G, edges, lights, signal }) {
     const mesh = new THREE.InstancedMesh(poleGeo(tall ? 6.05 : 3.6), poleMat, list.length);
     list.forEach((p, i) => mesh.setMatrixAt(i, m.makeTranslation(p.x, groundY(p.x, p.z) + PAVE, p.z)));
     mesh.castShadow = true;
+    mesh.userData.static = 'pole';
     group.add(mesh);
   }
   if (arms.length) {
@@ -199,6 +200,7 @@ export function createRobots(scene, { G, edges, lights, signal }) {
       mesh.setMatrixAt(i, m.compose(p3.set(a.x, groundY(a.x, a.z) + PAVE + 5.95, a.z), q, s3.set(a.len, 1, 1)));
     });
     mesh.castShadow = true;
+    mesh.userData.static = 'pole';
     group.add(mesh);
   }
 
@@ -250,10 +252,12 @@ export function createRobots(scene, { G, edges, lights, signal }) {
   housings.count = vHeads.length;
   lenses.count = vHeads.length * 3;
   housings.castShadow = true;
+  housings.userData.static = 'pole';
   group.add(housings, lenses);
   if (hangers.length) {
     const mesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 6), poleMat, hangers.length);
     hangers.forEach(([x, y, z], i) => mesh.setMatrixAt(i, m.makeTranslation(x, y + 0.15, z)));
+    mesh.userData.static = 'prop';
     group.add(mesh);
   }
 
@@ -271,6 +275,7 @@ export function createRobots(scene, { G, edges, lights, signal }) {
     q.setFromAxisAngle(up, h.yaw);
     m.compose(p3.set(h.x, groundY(h.x, h.z) + PAVE + h.y, h.z), q, s3.setScalar(1));
     pedBox.setMatrixAt(i, m);
+    pedBox.userData.static = 'prop';
     men.forEach((mm, k) => (mm.setMatrixAt(i, m), mm.setColorAt(i, MAN_OFF[k])));
   });
   pedBox.count = men[0].count = men[1].count = pHeads.length;

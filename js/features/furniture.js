@@ -29,17 +29,11 @@ function parts(list) {
 }
 const T = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
 
-// One material per kind; big sets are split into ~1.3 km tiles, each with its own instance bounding sphere, so the
-// camera and shadow frusta can skip the parts of town that aren't in view
+// One material per kind; js/tiles.js later splits each set into tiles the camera can skip and that drop out with distance
 function instanced(scene, geo, items, opts = {}) {
   if (!items.length) return null;
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.rough ?? 0.7, metalness: opts.metal ?? 0.1, side: opts.side ?? THREE.FrontSide });
-  const TILE = 1300, tiles = new Map();
-  if (items.length > 300) for (const it of items) {
-    const k = Math.floor(it.x / TILE) * 1000 + Math.floor(it.z / TILE);
-    (tiles.get(k) || tiles.set(k, []).get(k)).push(it);
-  }
-  else tiles.set(0, items);
+  const tiles = new Map([[0, items]]);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
   let first = null;
   for (const list of tiles.values()) {
@@ -55,6 +49,7 @@ function instanced(scene, geo, items, opts = {}) {
     mesh.receiveShadow = true;
     mesh.computeBoundingSphere();
     mesh.userData.fur = 1;
+    mesh.userData.static = 'prop';
     scene.add(mesh);
     first ||= mesh;
   }

@@ -437,6 +437,7 @@ float aNoise(vec2 p) {
   }
   poles.castShadow = true;
   glows.renderOrder = 2;
+  poles.userData.static = heads.userData.static = glows.userData.static = 'pole';
   group.add(poles, heads, glows);
 
   // Nearest named street to a point, for the HUD
@@ -457,6 +458,8 @@ float aNoise(vec2 p) {
     headMat.color.setScalar(night > 0.05 ? 1 + night * 3 : 0.45);
   }
 
+  // big ground and road layers spanning the city: js/features/detail.js cuts them into chunks the camera can skip
+  for (const m of group.children) if (m.isMesh && !m.isInstancedMesh && !m.userData.static) m.userData.chunk = 1;
   return { group, streetAt, setNight, lightSpots, lots: lotStats };
 }
 

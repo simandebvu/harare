@@ -602,6 +602,7 @@ export function buildClutter(ctx, H) {
       mesh.castShadow = true;
       mesh.computeBoundingSphere();
       mesh.userData.fur = 1;
+      mesh.userData.static = 'prop';
       scene.add(mesh);
     }
     const scaled = (geo, mat, list, shadow) => {
@@ -613,6 +614,7 @@ export function buildClutter(ctx, H) {
       mesh.receiveShadow = true;
       mesh.computeBoundingSphere();
       mesh.userData.fur = 1;
+      mesh.userData.static = 'prop';
       scene.add(mesh);
     };
     scaled(new THREE.BoxGeometry(1.0, 0.05, 1), new THREE.MeshStandardMaterial({ color: '#8a6a48', roughness: 0.9 }), boards, true);

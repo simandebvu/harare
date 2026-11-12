@@ -322,6 +322,7 @@ export function buildLots(group, DATA, renderer) {
     const im = new THREE.InstancedMesh(geo, carMat, list.length);
     list.forEach(([mm, cc], i) => (im.setMatrixAt(i, mm), im.setColorAt(i, cc)));
     im.castShadow = im.receiveShadow = true;
+    im.userData.static = 'car';
     group.add(im);
   }
   counts.solids = solids;

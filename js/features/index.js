@@ -20,5 +20,6 @@ import furniture from './furniture.js';
 import monuments from './monuments.js';
 import lighting from './lighting.js';
 import shadows from './shadows.js';
+import detail from './detail.js';
 
-export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, playMenu, heroEffects, supplyDrop, powers, heatVision, powersHud, chaos, chaosReport, share, photo, perf];
+export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, detail, playMenu, heroEffects, supplyDrop, powers, heatVision, powersHud, chaos, chaosReport, share, photo, perf];

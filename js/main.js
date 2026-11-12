@@ -73,7 +73,7 @@ async function init() {
   // the graphics chip, and switching AO off mid-game is what stalls (so it's decided here, before the shader warm-up)
   const phone = matchMedia('(pointer: coarse)').matches;
   const post = createPost(renderer, scene, camera, { samples: phone ? 0 : 4 });
-  if (phone) post.setQuality(1);
+  if (phone) post.setQuality(1), sun.shadow.mapSize.set(2048, 2048); // the on-foot shadow span is only ±130 m
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = new THREE.Scene();
