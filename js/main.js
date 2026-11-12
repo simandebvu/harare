@@ -274,6 +274,8 @@ async function init() {
 
   // Feature modules get one shared context. Fields are stable API for js/features/*.
   const ctx = {
+    // the next rendered frame as a 2D canvas
+    snapshot: () => new Promise((done) => shotQueue.push(done)),
     THREE, DATA, scene, camera, renderer, post, sun, sky, clouds, detailedCrowd, contacts,
     world, buildings, trees, traffic, people, controls, labels,
     setMode, flashHints,
@@ -333,6 +335,7 @@ async function init() {
   addEventListener('keydown', (e) => e.code === 'KeyP' && (userQuality = true));
   const shadowFocus = new THREE.Vector3(), shadowRight = new THREE.Vector3(), shadowUp = new THREE.Vector3();
   const worldUp = new THREE.Vector3(0, 1, 0);
+  const shotQueue = [];
   function frame() {
     // A hidden tab stops the loop; the first frame back must not replay the whole absence in one step
     const raw = timer.getDelta(), dt = Math.min(raw, 0.1);
@@ -391,6 +394,14 @@ async function init() {
     }
 
     post.render();
+    // Photo mode and the chaos report grab the frame here, straight after drawing it (the canvas keeps no buffer)
+    if (shotQueue.length) {
+      const c = renderer.domElement, shot = document.createElement('canvas');
+      shot.width = c.width;
+      shot.height = c.height;
+      shot.getContext('2d').drawImage(c, 0, 0);
+      for (const done of shotQueue.splice(0)) done(shot);
+    }
     if (labels.visible) {
       labelRenderer.render(scene, camera);
       if ((declutterT -= dt) < 0) (declutterT = 0.2), declutterLabels();

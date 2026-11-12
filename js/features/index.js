@@ -5,6 +5,8 @@ import heatVision from './heat-vision.js';
 import powersHud from './powers-hud.js';
 import chaos from './chaos.js';
 import share from './share.js';
+import photo from './photo.js';
+import chaosReport from './chaos-report.js';
 // js/features/index.js — optional feature modules, run in this order. Each owns its file; see main.js for ctx.
 import playMenu from './play-menu.js';
 import game from './game.js';
@@ -18,4 +20,4 @@ import monuments from './monuments.js';
 import lighting from './lighting.js';
 import shadows from './shadows.js';
 
-export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, playMenu, heroEffects, supplyDrop, powers, heatVision, powersHud, chaos, share];
+export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, playMenu, heroEffects, supplyDrop, powers, heatVision, powersHud, chaos, chaosReport, share, photo];
