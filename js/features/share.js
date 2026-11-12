@@ -24,7 +24,7 @@ export default {
 #play-menu .share-note{margin:0;font-size:12px;color:#8fa59b;min-height:1em}
 #play-menu .made-by{margin:14px 0 0;font-size:12.5px;color:#b9c9c1}#play-menu .made-by a,#play-menu .more a{color:#f5d453}
 #play-menu .more{margin:6px 0 0;padding:0 0 0 2px;list-style:none;display:grid;gap:5px;font-size:12.5px;color:#b9c9c1}#play-menu .more a{font-weight:650}
-@media (max-width:600px){#credit .by{display:none}}`;
+@media (max-width:600px){#credit .by{display:none}}body.gm-has-touch #credit .by{display:none}`;
     document.head.appendChild(st);
     const menu = document.getElementById('play-menu');
     if (!menu) return;

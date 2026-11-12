@@ -55,8 +55,8 @@ export default {
 .sirens.on{animation:sirens .9s steps(1) infinite}
 @keyframes sirens{0%{box-shadow:inset 90px 0 110px -70px rgba(255,30,40,.95),inset -90px 0 110px -70px rgba(30,70,255,.55)}50%{box-shadow:inset 90px 0 110px -70px rgba(30,70,255,.95),inset -90px 0 110px -70px rgba(255,30,40,.55)}}
 body.gm-has-touch .chaos{width:150px;padding:5px 8px 7px;font-size:11px}
-@media (max-width:600px) and (orientation:portrait){body.gm-has-touch .chaos{left:auto;right:10px;top:150px;transform:none}body.gm-has-touch .chaos.bump{animation:none}body.gm-has-touch .news,body.gm-has-touch .news.on{top:192px;left:10px;right:10px;width:auto;max-width:none;transform:none;font-size:12px}body.gm-has-touch .chaos-pop{left:auto;right:30px;top:196px;transform:none}}
-@media (max-height:500px) and (orientation:landscape){body.gm-has-touch .chaos{top:50px}body.gm-has-touch .news{top:96px}body.gm-has-touch .chaos-pop{top:96px}}`;
+@media (max-width:600px) and (orientation:portrait){body.gm-has-touch .chaos{left:auto;right:10px;top:168px;transform:none}body.gm-has-touch .chaos.bump{animation:none}body.gm-has-touch .news,body.gm-has-touch .news.on{top:62px;z-index:21;left:10px;right:10px;width:auto;max-width:none;transform:none;font-size:12px}body.gm-has-touch .chaos-pop{left:auto;right:30px;top:212px;transform:none}}
+@media (max-height:500px) and (orientation:landscape){body.gm-has-touch .chaos{top:50px}body.gm-has-touch .news{top:96px;max-width:calc(100vw - 300px);font-size:12px}body.gm-has-touch .chaos-pop{top:96px}}`;
     document.head.appendChild(st);
     const el = (this.el = document.createElement('div'));
     el.className = 'chaos';
