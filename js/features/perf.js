@@ -71,7 +71,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
     el.innerHTML = `<pre></pre>
 <div class="row"><button data-t="blur">Glass</button><button data-t="labels">Labels</button><button data-q="2">AO+bloom</button><button data-q="1">Bloom</button><button data-q="0">No fx</button></div>
 <div class="row"><button data-r="${this.base.res}">Res ${this.base.res}x</button><button data-r="1">1x</button><button data-r="0.75">0.75x</button></div>
-<div class="row keep"><button data-a="play">Record play</button><button data-a="test">Run test</button><button data-a="fly">Fly test</button><button data-a="copy">Copy report</button><button data-a="min">Hide</button></div>`;
+<div class="row keep"><button data-a="play">Record play</button><button data-a="test">Run test</button><button data-a="fly">Fly test</button><button data-a="flyplay">Fly play</button><button data-a="copy">Copy report</button><button data-a="min">Hide</button></div>`;
     this.out = el.querySelector('pre');
     document.body.appendChild(el);
     el.addEventListener('click', (e) => {
@@ -82,6 +82,7 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
       else if (b.dataset.r) this.apply({ res: +b.dataset.r });
       else if (b.dataset.a === 'test') this.runTest();
       else if (b.dataset.a === 'play') this.recordPlay();
+      else if (b.dataset.a === 'flyplay') this.flyPlay();
       else if (b.dataset.a === 'fly') this.runTest(FLY, 'hover in the air');
       else if (b.dataset.a === 'copy') this.copy();
       else if (b.dataset.a === 'min') el.classList.toggle('min');
@@ -113,6 +114,40 @@ body.perf-noblur *{backdrop-filter:none!important;-webkit-backdrop-filter:none!i
       let maxIdle = 0;
       for (let i = 0; i < 10; i++) await wait(500), (maxIdle = Math.max(maxIdle, this.idle()));
       this.results.push([`play ${k * 5}-${k * 5 + 5}s`, this.stats(5), maxIdle]);
+    }
+    this.testing = false;
+    this.status = 'done: tap Copy report';
+  },
+
+  // Fly play: you keep flying (a phone slows right down when nobody touches it, so hands-off tests mislead) while each
+  // 5-second slice switches one suspect off, on top of the settings phones really fly with
+  async flyPlay() {
+    if (this.testing) return;
+    this.testing = true;
+    this.results = [];
+    const c = this.ctx, wait = (ms) => new Promise((r) => setTimeout(r, ms)), pr = c.renderer.getPixelRatio();
+    const glass = (on) => document.body.classList.toggle('perf-noblur', !on);
+    const steps = [
+      { name: 'flying, as shipped' },
+      { name: 'no frosted glass', on: () => glass(false), off: () => glass(true) },
+      { name: 'no shadows', on: () => (c.userQuality = true), each: OFF.shadows.each, off: (x) => (OFF.shadows.undo(x), (c.userQuality = false)) },
+      { name: 'resolution half', on: () => c.setPixelRatio(pr / 2), off: () => c.setPixelRatio(pr) },
+      { name: 'no trees or suburbs', each: (x) => (OFF.trees.each(x), OFF.suburbs.each(x)), off: (x) => (OFF.trees.undo(x), OFF.suburbs.undo(x)) },
+      { name: 'no buildings', each: OFF.buildings.each, off: OFF.buildings.undo },
+      { name: 'nothing drawn', each: OFF.everything.each, off: OFF.everything.undo },
+      { name: 'as shipped again' },
+    ];
+    for (const st of steps) {
+      this.status = `keep flying! now: ${st.name}`;
+      st.on?.(c);
+      this.each = st.each;
+      await wait(700);
+      c.perf.log.length = 0;
+      let maxIdle = 0;
+      for (let i = 0; i < 9; i++) await wait(500), (maxIdle = Math.max(maxIdle, this.idle()));
+      this.results.push([st.name, this.stats(4.5), maxIdle]);
+      this.each = null;
+      st.off?.(c);
     }
     this.testing = false;
     this.status = 'done: tap Copy report';
