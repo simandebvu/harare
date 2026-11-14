@@ -1,0 +1,16 @@
+{
+  "_help": "Sponsor slots and the tip link. Edit, push, done: no code. billboards: 8 rooftop slots (image 1024x384 px, PNG or JPG, in assets/sponsors/). wallAds: 8 painted wall slots (image 1024x512). Each entry takes 'slots' of the 8 (more slots = shown on more buildings); unsold slots keep the made-up brands. An entry without 'image' is drawn as text: billboards use brand, line, bg [from, to], fg; wall ads use t (small top line), b (big name), s (bottom line), bg, fg. 'url' opens when a player taps the sign; 'id' names its click count in GoatCounter (harare/sponsor-<id>). tip.url: your Ko-fi / Buy Me a Coffee link; leave empty to hide the button.",
+  "tip": { "url": "", "label": "Support Harare3D" },
+  "billboards": [
+    {
+      "id": "rotapot",
+      "brand": "Rotapot",
+      "line": "Mukando & stokvels, sorted",
+      "bg": ["#0b5d4b", "#11a37f"],
+      "fg": "#ffe28a",
+      "url": "https://rotapot.simakk.co.za/?ref=harare3d-billboard",
+      "slots": 1
+    }
+  ],
+  "wallAds": []
+}

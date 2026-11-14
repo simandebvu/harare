@@ -9,6 +9,7 @@ import share from './share.js';
 import photo from './photo.js';
 import chaosReport from './chaos-report.js';
 import perf from './perf.js';
+import sponsors from './sponsors.js';
 // js/features/index.js — optional feature modules, run in this order. Each owns its file; see main.js for ctx.
 import playMenu from './play-menu.js';
 import game from './game.js';
@@ -23,4 +24,4 @@ import lighting from './lighting.js';
 import shadows from './shadows.js';
 import detail from './detail.js';
 
-export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, detail, playMenu, heroEffects, supplyDrop, powers, telekinesis, heatVision, powersHud, chaos, chaosReport, share, photo, perf];
+export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, detail, playMenu, heroEffects, supplyDrop, powers, telekinesis, heatVision, powersHud, chaos, chaosReport, share, sponsors, photo, perf];

@@ -56,7 +56,8 @@ const LAYOUT = {
   wallad: [0, 1408, 512, 256, 4, 8],
   crown: [0, 1920, 512, 64, 4, 8],
 };
-const cellRect = (kind, i) => {
+export const ATLAS = { W, H, LAYOUT };
+export const cellRect = (kind, i) => {
   const [x0, y0, cw, ch, cols] = LAYOUT[kind];
   return [x0 + (i % cols) * cw, y0 + Math.floor(i / cols) * ch, cw, ch];
 };
@@ -109,6 +110,69 @@ function mark(g, kind, x, y, s, col) {
     g.fillRect(x - s * 0.13, y - s * 0.32, s * 0.26, s * 0.5);
   } else if (kind === 'shield') {
     g.beginPath(); g.moveTo(x - s * 0.3, y - s * 0.4); g.lineTo(x + s * 0.3, y - s * 0.4); g.lineTo(x + s * 0.3, y); g.quadraticCurveTo(x + s * 0.3, y + s * 0.35, x, y + s * 0.45); g.quadraticCurveTo(x - s * 0.3, y + s * 0.35, x - s * 0.3, y); g.closePath(); g.fill();
+  }
+  g.restore();
+}
+
+// A backlit rooftop billboard: { brand, line, bg: [from, to], fg, mark }. Also used for sponsors (js/features/sponsors.js).
+export function paintBillboard(g, x, y, w, h, b) {
+  g.save();
+  g.textBaseline = 'middle';
+  const grd = g.createLinearGradient(x, y, x + w, y + h);
+  grd.addColorStop(0, b.bg[0]);
+  grd.addColorStop(1, b.bg[1] || b.bg[0]);
+  g.fillStyle = grd;
+  g.fillRect(x, y, w, h);
+  // big diagonal swoosh
+  g.fillStyle = 'rgba(255,255,255,0.12)';
+  g.beginPath(); g.moveTo(x + w * 0.55, y); g.lineTo(x + w, y); g.lineTo(x + w, y + h); g.lineTo(x + w * 0.75, y + h); g.closePath(); g.fill();
+  const hasMark = b.mark && b.mark !== 'none';
+  if (hasMark) mark(g, b.mark, x + w * 0.85, y + h * 0.5, h * 0.75, b.fg);
+  g.textAlign = 'left';
+  g.fillStyle = b.fg;
+  fit(g, b.brand, '900', 'Arial Black, Arial, sans-serif', w * (hasMark ? 0.68 : 0.9), h * 0.34);
+  g.fillText(b.brand, x + 22, y + h * 0.38);
+  g.fillStyle = b.lineColor || '#ffffff';
+  fit(g, b.line || '', 'bold', 'Arial, sans-serif', w * (hasMark ? 0.66 : 0.9), h * 0.16);
+  g.fillText(b.line || '', x + 24, y + h * 0.7);
+  g.fillStyle = 'rgba(0,0,0,0.5)';
+  g.fillRect(x, y + h - 6, w, 6);
+  g.restore();
+}
+
+// A hand-painted wall advert: { t, b, s, bg, fg, mark }; r (a random stream) adds sun-bleaching and flaking paint
+export function paintWallAd(g, x, y, w, h, a, r = null) {
+  g.save();
+  g.textBaseline = 'middle';
+  g.textAlign = 'center';
+  g.fillStyle = a.bg;
+  g.fillRect(x, y, w, h);
+  g.strokeStyle = a.fg;
+  g.lineWidth = 5;
+  g.strokeRect(x + 12, y + 12, w - 24, h - 24);
+  const hasMark = a.mark && a.mark !== 'none';
+  const cx = x + (hasMark ? w * 0.42 : w / 2);
+  g.fillStyle = a.fg;
+  fit(g, a.t || '', 'italic bold', 'Georgia, serif', w * 0.6, h * 0.16);
+  g.fillText(a.t || '', cx, y + h * 0.27);
+  fit(g, a.b, '900', 'Impact, "Arial Black", sans-serif', w * (hasMark ? 0.66 : 0.82), h * 0.3);
+  g.fillText(a.b, cx, y + h * 0.52);
+  fit(g, a.s || '', 'bold', 'Arial, sans-serif', w * 0.6, h * 0.11);
+  g.fillText(a.s || '', cx, y + h * 0.77);
+  if (hasMark) mark(g, a.mark, x + w * 0.83, y + h * 0.52, h * 0.55, a.fg);
+  if (r) {
+    // sun-bleached and peeling: pale wash, flakes and drips
+    g.fillStyle = 'rgba(235,225,205,0.22)';
+    g.fillRect(x, y, w, h);
+    for (let k = 0; k < 260; k++) {
+      g.fillStyle = `rgba(225,215,195,${0.15 + r() * 0.45})`;
+      const fx = x + r() * w, fy = y + r() * h;
+      g.fillRect(fx, fy, 2 + r() * 16, 1 + r() * 6);
+    }
+    for (let k = 0; k < 30; k++) {
+      g.fillStyle = `rgba(60,45,35,${r() * 0.12})`;
+      g.fillRect(x + r() * w, y + r() * h * 0.5, 1 + r() * 2, 20 + r() * 80);
+    }
   }
   g.restore();
 }
@@ -192,59 +256,9 @@ function drawAtlas() {
     }
   }
   // Rooftop billboards
-  BILLBOARDS.forEach((b, i) => {
-    const [x, y, w, h] = cellRect('billboard', i);
-    const grd = g.createLinearGradient(x, y, x + w, y + h);
-    grd.addColorStop(0, b.bg[0]);
-    grd.addColorStop(1, b.bg[1]);
-    g.fillStyle = grd;
-    g.fillRect(x, y, w, h);
-    // big diagonal swoosh
-    g.fillStyle = 'rgba(255,255,255,0.12)';
-    g.beginPath(); g.moveTo(x + w * 0.55, y); g.lineTo(x + w, y); g.lineTo(x + w, y + h); g.lineTo(x + w * 0.75, y + h); g.closePath(); g.fill();
-    mark(g, b.mark, x + w * 0.85, y + h * 0.5, h * 0.75, b.fg);
-    g.textAlign = 'left';
-    g.fillStyle = b.fg;
-    fit(g, b.brand, '900', 'Arial Black, Arial, sans-serif', w * 0.68, h * 0.34);
-    g.fillText(b.brand, x + 22, y + h * 0.38);
-    g.fillStyle = '#ffffff';
-    fit(g, b.line, 'bold', 'Arial, sans-serif', w * 0.66, h * 0.16);
-    g.fillText(b.line, x + 24, y + h * 0.7);
-    g.textAlign = 'center';
-    g.fillStyle = 'rgba(0,0,0,0.5)';
-    g.fillRect(x, y + h - 6, w, 6);
-  });
+  BILLBOARDS.forEach((b, i) => paintBillboard(g, ...cellRect('billboard', i), b));
   // Faded hand-painted wall adverts
-  WALL_ADS.forEach((a, i) => {
-    const [x, y, w, h] = cellRect('wallad', i);
-    g.fillStyle = a.bg;
-    g.fillRect(x, y, w, h);
-    g.strokeStyle = a.fg;
-    g.lineWidth = 5;
-    g.strokeRect(x + 12, y + 12, w - 24, h - 24);
-    const hasMark = a.mark !== 'none';
-    const cx = x + (hasMark ? w * 0.42 : w / 2);
-    g.fillStyle = a.fg;
-    fit(g, a.t, 'italic bold', 'Georgia, serif', w * 0.6, h * 0.16);
-    g.fillText(a.t, cx, y + h * 0.27);
-    fit(g, a.b, '900', 'Impact, "Arial Black", sans-serif', w * (hasMark ? 0.66 : 0.82), h * 0.3);
-    g.fillText(a.b, cx, y + h * 0.52);
-    fit(g, a.s, 'bold', 'Arial, sans-serif', w * 0.6, h * 0.11);
-    g.fillText(a.s, cx, y + h * 0.77);
-    if (hasMark) mark(g, a.mark, x + w * 0.83, y + h * 0.52, h * 0.55, a.fg);
-    // sun-bleached and peeling: pale wash, flakes and drips
-    g.fillStyle = 'rgba(235,225,205,0.22)';
-    g.fillRect(x, y, w, h);
-    for (let k = 0; k < 260; k++) {
-      g.fillStyle = `rgba(225,215,195,${0.15 + r() * 0.45})`;
-      const fx = x + r() * w, fy = y + r() * h;
-      g.fillRect(fx, fy, 2 + r() * 16, 1 + r() * 6);
-    }
-    for (let k = 0; k < 30; k++) {
-      g.fillStyle = `rgba(60,45,35,${r() * 0.12})`;
-      g.fillRect(x + r() * w, y + r() * h * 0.5, 1 + r() * 2, 20 + r() * 80);
-    }
-  });
+  WALL_ADS.forEach((a, i) => paintWallAd(g, ...cellRect('wallad', i), a, r));
   // Tower-top company names: lit letters on a dark band
   CROWNS.forEach((n, i) => {
     const [x, y, w, h] = cellRect('crown', i);

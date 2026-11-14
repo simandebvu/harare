@@ -26,6 +26,7 @@ export default {
 .chaos-report ul{list-style:none;margin:10px 18px 14px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px;color:#d8e3dd}
 .chaos-report li b{color:#fff;font-size:16px;margin-right:5px}
 .chaos-report .acts{display:flex;gap:9px;padding:0 18px}
+.chaos-report .tip{display:block;margin:10px 18px 0;text-align:center;color:#f5d453;font:600 13px system-ui;text-decoration:none}
 .chaos-report button{flex:1;padding:11px;border-radius:10px;border:1px solid #ffffff38;background:#273d36;color:#fff;font:600 14px system-ui;cursor:pointer}
 .chaos-report button.primary{background:#f5d453;color:#18201c;border-color:#f5d453}
 .chaos-report button:focus-visible{outline:2px solid #fff;outline-offset:3px}
@@ -38,6 +39,7 @@ body.photo-mode .chaos-report{display:none}`;
     el.setAttribute('aria-label', 'Damage report');
     document.body.appendChild(el);
     el.addEventListener('click', (e) => {
+      if (e.target.closest('a.tip')) return track('tip-report');
       const b = e.target.closest('button');
       if (b?.dataset.do === 'share') this.share();
       else if (b?.dataset.do === 'close') this.hide();
@@ -115,7 +117,7 @@ body.photo-mode .chaos-report{display:none}`;
     this.lastFrame = this.frame;
     this.reset();
     if (!r.rows.length) return;
-    this.el.innerHTML = `<header><b>BREAKING</b><span>${esc(r.headline)}</span></header><div class="bill"><small>DAMAGE REPORT</small><strong>${r.damage}</strong><p>around ${esc(r.street)} · peak: ${r.peak}</p></div><ul>${r.rows.map(([n, l]) => `<li><b>${n}</b>${l}</li>`).join('')}</ul><div class="acts"><button type="button" class="primary" data-do="share">Share report</button><button type="button" data-do="close">Keep playing</button></div><p class="note" role="status"></p>`;
+    this.el.innerHTML = `<header><b>BREAKING</b><span>${esc(r.headline)}</span></header><div class="bill"><small>DAMAGE REPORT</small><strong>${r.damage}</strong><p>around ${esc(r.street)} · peak: ${r.peak}</p></div><ul>${r.rows.map(([n, l]) => `<li><b>${n}</b>${l}</li>`).join('')}</ul><div class="acts"><button type="button" class="primary" data-do="share">Share report</button><button type="button" data-do="close">Keep playing</button></div>${this.ctx.tip ? `<a class="tip" href="${esc(this.ctx.tip.url)}" target="_blank" rel="noopener">☕ ${esc(this.ctx.tip.label)}</a>` : ''}<p class="note" role="status"></p>`;
     this.el.classList.add('on');
     track('chaos-report');
     clearTimeout(this.hideT);
