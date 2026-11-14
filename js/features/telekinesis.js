@@ -48,9 +48,13 @@ export default {
     this.palm.visible = false;
     this.palm.renderOrder = 7;
     ctx.scene.add(this.palm);
+    this.palmL = new T.Sprite(this.palm.material);
+    this.palmL.visible = false;
+    this.palmL.renderOrder = 7;
+    ctx.scene.add(this.palmL);
     // Under-glow: a cyan light pool on the car's underside, the clearest cue that it is held up by something
     this.under = new T.Sprite(new T.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: T.AdditiveBlending, toneMapped: false }));
-    this.under.material.color.setScalar(1.4);
+    this.under.material.color.setScalar(1.0);
     this.under.visible = false;
     this.under.renderOrder = 7;
     ctx.scene.add(this.under);
@@ -87,15 +91,15 @@ export default {
       const g = f.group, h = f.half;
       this.field.position.copy(g.position);
       this.field.quaternion.copy(g.quaternion);
-      this.field.scale.set(h.x * 1.3 + 0.3, h.y * 1.45 + 0.3, h.z * 1.12 + 0.3);
+      this.field.scale.set(h.x * 1.12 + 0.12, h.y * 1.2 + 0.12, h.z * 1.06 + 0.12); // hugging the car: an outline, not a fog
       this.uni.uA.value = this.a * (0.85 + 0.15 * Math.sin(this.uni.uTime.value * 9));
     }
     this.under.visible = this.field.visible;
     if (this.under.visible) {
       const g = f.group, h = f.half;
       this.under.position.set(g.position.x, g.position.y - h.y * 0.95, g.position.z);
-      this.under.scale.setScalar((Math.max(h.x, h.z) * 1.6 + 0.6) * (0.92 + Math.sin(this.uni.uTime.value * 7) * 0.08));
-      this.under.material.opacity = this.a;
+      this.under.scale.setScalar((Math.max(h.x, h.z) * 1.1 + 0.4) * (0.92 + Math.sin(this.uni.uTime.value * 7) * 0.08));
+      this.under.material.opacity = this.a * 0.6;
     }
     if (held) {
       const g = held.group.position, h = held.half, j = () => Math.random() - 0.5;
@@ -120,14 +124,15 @@ export default {
       this.mark.scale.setScalar(m.r * pulse);
       this.mark.material.opacity = 0.75 * this.markA;
     }
-    // the raised palm
-    const hand = P.bones?.hand_r;
-    this.palm.visible = !!held && !!hand && ctx.controls.player.visible;
-    if (this.palm.visible) {
-      hand.getWorldPosition(this.palm.position);
-      this.palm.scale.setScalar(0.75 + Math.sin(this.uni.uTime.value * 11) * 0.1);
-      this.palm.material.opacity = Math.min(1, this.a * 1.2);
+    // the raised palms
+    const show = !!held && ctx.controls.player.visible, s = 0.6 + Math.sin(this.uni.uTime.value * 11) * 0.08;
+    for (const [spr, bone] of [[this.palm, P.bones?.hand_r], [this.palmL, P.bones?.hand_l]]) {
+      spr.visible = show && !!bone;
+      if (!spr.visible) continue;
+      bone.getWorldPosition(spr.position);
+      spr.scale.setScalar(s);
     }
+    this.palm.material.opacity = Math.min(1, this.a * 1.2);
   },
 
   // A puff ring of street dust around the car's footprint (the street under it, not the car's height)
