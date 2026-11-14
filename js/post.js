@@ -50,10 +50,27 @@ export function createPost(renderer, scene, camera, { samples = 4 } = {}) {
   gtao.blendIntensity = 1.0;
   gtao.updateGtaoMaterial({ radius: 5, distanceExponent: 1.6, thickness: 4, scale: 1.2, samples: 8, distanceFallOff: 1, screenSpaceRadius: false });
   gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
+  // GTAO's normal pass draws every object with one opaque override material, so glows, beams, flares and smoke (see-through,
+  // no depth of their own) turned into solid cards there and printed dark slabs into the shading: a sprite drawn that way
+  // is a flat square in a fixed direction. Leave out whatever does not write depth in the real pass. The list is refreshed
+  // every second (effects come and go), and only matters on desktop, where AO runs.
+  let glows = [], glowsAt = -1;
+  const isGlow = (o) => {
+    if (!(o.isMesh || o.isSprite || o.isPoints || o.isLine)) return false;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    return !!m && (o.isSprite || (m.transparent && m.depthWrite === false));
+  };
   // after GTAO's override-material normal pass, let posed meshes (people) draw themselves into the same buffer
   const renderOverride = gtao.renderOverride.bind(gtao);
   gtao.renderOverride = (r, material, rt, clearColor, clearAlpha) => {
-    renderOverride(r, material, rt, clearColor, clearAlpha);
+    if (material === gtao.normalMaterial) {
+      const now = performance.now();
+      if (now - glowsAt > 1000) (glowsAt = now), (glows = []), scene.traverse((o) => isGlow(o) && glows.push(o));
+      const shown = glows.filter((o) => o.visible);
+      for (const o of shown) o.visible = false;
+      renderOverride(r, material, rt, clearColor, clearAlpha);
+      for (const o of shown) o.visible = true;
+    } else renderOverride(r, material, rt, clearColor, clearAlpha);
     if (material !== gtao.normalMaterial || !aoHooks.length) return;
     const prevTarget = r.getRenderTarget(), prevAuto = r.autoClear;
     r.setRenderTarget(rt);
