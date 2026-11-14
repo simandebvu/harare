@@ -14,20 +14,42 @@ export default {
     this.on = false;
     ctx.heatVision = this;
     this.v = { a: new T.Vector3(), b: new T.Vector3(), d: new T.Vector3(), up: new T.Vector3(0, 1, 0), q: new T.Quaternion() };
-    // Beams: a hot core inside a soft glow, one pair per eye; unit length along +Y, scaled to reach the hit
-    const cyl = (r) => new T.CylinderGeometry(r, r, 1, 10, 1, true).translate(0, 0.5, 0);
-    const core = new T.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, depthWrite: false, blending: T.AdditiveBlending });
-    const glow = new T.MeshBasicMaterial({ color: 0xff3a10, transparent: true, opacity: 0.45, depthWrite: false, blending: T.AdditiveBlending });
+    // Beams: a white-hot core in a flickering orange glow in a faint heat haze, one per eye; unit length along +Y, scaled
+    // to reach the hit. Each layer fades to nothing at its edges (by the angle to the view), so none reads as a tube.
+    const cyl = (r) => new T.CylinderGeometry(r, r, 1, 12, 1, true).translate(0, 0.5, 0);
+    this.beamTime = { value: 0 };
+    const layer = (color, alpha, sharp, crackle) =>
+      new T.ShaderMaterial({
+        uniforms: { uTime: this.beamTime, uColor: { value: new T.Color(color) }, uA: { value: alpha } },
+        transparent: true,
+        depthWrite: false,
+        blending: T.AdditiveBlending,
+        toneMapped: false,
+        vertexShader: /* glsl */ `varying float vEdge; varying vec3 vW;
+          void main() {
+            vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz;
+            vec3 n = mat3(modelMatrix) * normal, toCam = normalize(cameraPosition - w.xyz);
+            vEdge = abs(dot(n, toCam)) / max(length(n), 1e-5);
+            gl_Position = projectionMatrix * viewMatrix * w;
+          }`,
+        fragmentShader: /* glsl */ `uniform float uTime, uA; uniform vec3 uColor; varying float vEdge; varying vec3 vW;
+          void main() {
+            // pow() of a value a hair outside 0..1 is NaN on some GPUs, and bloom smears one NaN into black blocks
+            float f = pow(clamp(vEdge, 0.0001, 1.0), ${sharp.toFixed(1)});
+            float c = 1.0 - ${crackle.toFixed(2)} * (0.5 + 0.5 * sin(dot(vW, vec3(13.1, 17.7, 11.3)) - uTime * 55.0) * sin(dot(vW, vec3(5.3, -7.1, 9.7)) + uTime * 31.0));
+            gl_FragColor = vec4(uColor * f * c * uA, 1.0);
+          }`,
+      });
+    const core = layer(0xfff4dc, 1.6, 1.5, 0.15), glow = layer(0xff4a14, 0.9, 1.2, 0.45), haze = layer(0xff2a08, 0.28, 1.0, 0.3);
     this.beams = [0, 1].map(() => {
       const g = new T.Group();
-      g.add(new T.Mesh(cyl(0.022), core), new T.Mesh(cyl(0.09), glow));
+      g.add(new T.Mesh(cyl(0.028), core), new T.Mesh(cyl(0.11), glow), new T.Mesh(cyl(0.3), haze));
       g.visible = false;
       g.frustumCulled = false;
       g.traverse((o) => (o.frustumCulled = false));
       ctx.scene.add(g);
       return g;
     });
-    this.glowMat = glow;
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 64;
     const c2 = canvas.getContext('2d'), grad = c2.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -39,8 +61,11 @@ export default {
     this.flare = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(canvas), transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
     this.flare.visible = false;
     ctx.scene.add(this.flare);
+    const eyeMat = this.flare.material.clone();
+    eyeMat.toneMapped = false;
+    eyeMat.color.setScalar(1.6);
     this.eyeGlow = [0, 1].map(() => {
-      const s = new T.Sprite(this.flare.material);
+      const s = new T.Sprite(eyeMat);
       s.visible = false;
       s.renderOrder = 7;
       ctx.scene.add(s);
@@ -56,6 +81,7 @@ export default {
       return m;
     });
     this.markNext = 0;
+    this.cool = new T.Color(0x120c08);
     this.lastMark = new T.Vector3(1e9, 0, 0);
     this.fires = [];
     this.treeHeat = new Map();
@@ -159,6 +185,7 @@ export default {
       for (const s of this.eyeGlow) s.visible = false;
       this.flare.visible = false;
       this.headW = 0;
+      this.fireT = 0;
       return;
     }
     const cam = this.ctx.camera, dir = cam.getWorldDirection(new T.Vector3());
@@ -171,25 +198,31 @@ export default {
     }
     this.lookAt(hit.point, dt);
     const eye = this.eyes(me).clone(), right = v.b.set(Math.cos(me.yaw), 0, -Math.sin(me.yaw));
-    this.glowMat.opacity = 0.35 + Math.random() * 0.2;
+    this.beamTime.value += dt;
+    // the beams shoot out from the eyes over a tenth of a second rather than appearing whole
+    this.fireT = (this.fireT || 0) + dt;
+    const reach = Math.min(1, this.fireT / 0.1), landed = reach >= 1;
     this.beams.forEach((b, i) => {
       const from = eye.clone().addScaledVector(right, i ? 0.034 : -0.034), d = hit.point.clone().sub(from), len = d.length();
       this.eyeGlow[i].position.copy(from);
       this.eyeGlow[i].visible = true;
-      this.eyeGlow[i].scale.setScalar(0.16 + Math.random() * 0.05);
+      this.eyeGlow[i].scale.setScalar(0.26 + Math.random() * 0.08);
       b.position.copy(from);
       b.quaternion.setFromUnitVectors(v.up, d.divideScalar(len || 1));
-      b.scale.set(1, len, 1);
+      b.scale.set(0.85 + Math.random() * 0.3, len * reach, 0.85 + Math.random() * 0.3);
       b.visible = true;
     });
-    this.flare.visible = !!hit.normal;
-    if (!hit.normal) return;
+    this.flare.visible = !!hit.normal && landed;
+    if (!hit.normal || !landed) return;
     this.flare.position.copy(hit.point).addScaledVector(hit.normal, 0.15);
-    this.flare.scale.setScalar(1.2 + Math.random() * 0.6);
-    // Sparks and a wisp of smoke where it lands
+    this.flare.scale.setScalar(1.9 + Math.random() * 0.9);
+    // a slight shudder while it burns
+    c.rig.shake = Math.max(c.rig.shake || 0, 0.14);
+    // Sparks spraying off the surface, embers drifting up, a wisp of smoke
     const j = () => Math.random() - 0.5, h = hit.point;
-    for (let k = 0; k < 3; k++) P.fire.emit(h.x, h.y + 0.1, h.z, j() * 5 + hit.normal.x * 3, 2 + Math.random() * 4, j() * 5 + hit.normal.z * 3, 0.35 + Math.random() * 0.3, 0.18, [1, 0.6, 0.25], 1, 0, 0.6, -14);
-    if (Math.random() < 0.3) P.smoke.emit(h.x, h.y + 0.2, h.z, j() * 0.4, 1 + Math.random(), j() * 0.4, 1.8, 0.7, [0.25, 0.24, 0.24], 0.4, 2, 1, 0.4);
+    for (let k = 0; k < 6; k++) P.fire.emit(h.x, h.y + 0.1, h.z, j() * 7 + hit.normal.x * 4, 2.5 + Math.random() * 5, j() * 7 + hit.normal.z * 4, 0.3 + Math.random() * 0.35, 0.15 + Math.random() * 0.1, [1, 0.55 + Math.random() * 0.25, 0.2], 1, 0, 0.6, -14);
+    if (Math.random() < 0.5) P.fire.emit(h.x + j(), h.y + 0.3, h.z + j(), j() * 0.6, 1 + Math.random() * 1.5, j() * 0.6, 1 + Math.random() * 0.8, 0.12, [1, 0.45, 0.1], 0.9, 0, 0.8, 1.2);
+    if (Math.random() < 0.4) P.smoke.emit(h.x, h.y + 0.2, h.z, j() * 0.4, 1 + Math.random(), j() * 0.4, 1.8, 0.8, [0.22, 0.21, 0.21], 0.45, 2, 1, 0.4);
     if ((this.scareT = (this.scareT || 0) - dt) < 0) (this.scareT = 0.3), this.ctx.people.scare(h.x, h.z, 9, 0);
     // Protected places (the Nehanda statue, Parliament, churches): the beam glances off in a gold shimmer, no scorch, no fire
     const sacred = !hit.target || hit.target.tree !== undefined ? protectedAt(h.x, h.z) : null;
@@ -304,6 +337,7 @@ export default {
     m.lookAt(this.v.a.copy(m.position).add(n));
     m.scale.setScalar((0.7 + Math.random() * 0.5) * size);
     m.userData.age = 0;
+    m.material.color.setRGB(1, 0.42, 0.08); // molten for a moment, then it cools (updateMarks)
     m.visible = true;
     this.lastMark.copy(p);
   },
@@ -314,6 +348,7 @@ export default {
       const a = (m.userData.age += dt);
       if (a > MARK_LIFE) m.visible = false;
       else m.material.opacity = 0.78 * Math.min(1, (MARK_LIFE - a) / 6);
+      if (a < 1.6) m.material.color.setRGB(1, 0.42, 0.08).lerp(this.cool, Math.min(1, a / 1.6) ** 0.6);
     }
   },
 

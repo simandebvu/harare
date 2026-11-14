@@ -2,6 +2,7 @@ import supplyDrop from './supply-drop.js';
 import heroEffects from './hero-effects.js';
 import powers from './powers.js';
 import heatVision from './heat-vision.js';
+import telekinesis from './telekinesis.js';
 import powersHud from './powers-hud.js';
 import chaos from './chaos.js';
 import share from './share.js';
@@ -22,4 +23,4 @@ import lighting from './lighting.js';
 import shadows from './shadows.js';
 import detail from './detail.js';
 
-export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, detail, playMenu, heroEffects, supplyDrop, powers, heatVision, powersHud, chaos, chaosReport, share, photo, perf];
+export const features = [game, map, shift, garage, audio, suburbs, furniture, monuments, lighting, shadows, detail, playMenu, heroEffects, supplyDrop, powers, telekinesis, heatVision, powersHud, chaos, chaosReport, share, photo, perf];

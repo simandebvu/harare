@@ -10,6 +10,7 @@ import { groundY } from '../util.js';
 import { overheadAt } from '../overheads.js';
 
 const MAX_PROPS = 10, GRAVITY = 22, ROAD_Y = 0.22, WRECK_LIFE = 14, GRAB_REACH = 2.6;
+const FLOAT = 0.55; // telekinesis: the gap between the raised hand and a carried car
 const GLB = { fit: 'fit', sedan: 'sedan', police: 'police', kombi: 'hiace' };
 const glbCache = new Map();
 const glb = (name) => {
@@ -120,8 +121,8 @@ export default {
   // Where a carried car sits: pressed overhead along the body's head direction (straight up on foot, out in front when
   // flying flat out, Superman-style), a little forward so the hero stays in view below its tail
   heldCentre(me, half, out) {
-    const up = this.bodyUp(), ahead = half.z * 0.3 * Math.max(0, up.y);
-    out.set(me.x, me.y + 1, me.z).addScaledVector(up, 0.82 + half.y);
+    const up = this.bodyUp(), ahead = half.z * 0.3 * Math.max(0, up.y), bob = Math.sin((performance.now() / 1000) * 2.1) * 0.1;
+    out.set(me.x, me.y + 1, me.z).addScaledVector(up, 0.82 + FLOAT + bob + half.y); // floating clear of the raised hand
     out.x += Math.sin(me.yaw) * ahead;
     out.z += Math.cos(me.yaw) * ahead;
     return out;
@@ -475,20 +476,19 @@ export default {
       aim = up.clone().multiplyScalar(1 - e).addScaledVector(fwd, 1.2 * e).addScaledVector(new T.Vector3(0, -1, 0), 0.5 * e).normalize();
     }
     model.updateMatrixWorld(true);
-    const neck = B.neck_01.getWorldPosition(new T.Vector3());
-    for (const side of ['l', 'r']) {
-      const upper = B['upperarm_' + side], lower = B['lowerarm_' + side], hand = B['hand_' + side];
-      const shoulder = upper.getWorldPosition(new T.Vector3()), out = shoulder.clone().sub(neck);
-      out.addScaledVector(aim, -out.dot(aim)).normalize(); // outward from the neck, square to the aim
-      // Carrying: reach for the underside of the car, palms under its floor either side of the middle
-      let reach = aim;
-      if (!throwing && this.held?.state === 'held') {
-        const g = this.held.group.position;
-        reach = new T.Vector3(g.x, g.y - this.held.half.y, g.z).addScaledVector(out, 0.25).sub(shoulder).normalize();
-      }
-      this.point(upper, lower, reach.clone().addScaledVector(out, 0.18).normalize(), w);
-      this.point(lower, hand, reach.clone().addScaledVector(out, 0.03).normalize(), w);
-    }
+    // Telekinesis: one palm raised to the car (the other arm keeps its walk or idle swing); a throw thrusts that palm
+    // forward, the way the camera looks. Arms bent onto a chassis never quite met it, and read as broken.
+    const neck = B.neck_01.getWorldPosition(new T.Vector3()), upper = B.upperarm_r, lower = B.lowerarm_r, hand = B.hand_r;
+    const shoulder = upper.getWorldPosition(new T.Vector3()), out = shoulder.clone().sub(neck).setY(0).normalize();
+    let reach;
+    if (throwing) {
+      const k = 1 - Math.max(0, this.throwT) / 0.42, e = 1 - (1 - k) ** 3;
+      const look = this.ctx.camera.getWorldDirection(new T.Vector3());
+      reach = up.clone().multiplyScalar(1 - e).addScaledVector(look.setY(Math.max(look.y, -0.2)).normalize(), 1.6 * e).normalize();
+    } else if (this.held?.state === 'held') reach = this.held.group.position.clone().sub(shoulder).normalize();
+    else reach = aim;
+    this.point(upper, lower, reach.clone().addScaledVector(out, 0.14).normalize(), w);
+    this.point(lower, hand, reach, w);
   },
   point(bone, child, dir, w) {
     const T = this.T, from = bone.getWorldPosition(new T.Vector3()), cur = child.getWorldPosition(new T.Vector3()).sub(from).normalize();
@@ -537,16 +537,18 @@ export default {
         }
       }
       if (p.state === 'held') {
-        // Rise from the street into a press overhead, then ride along above the hero's head
-        p.lift = Math.min(1, p.lift + dt / 0.45);
-        const k = p.lift * p.lift * (3 - 2 * p.lift);
-        // Pressed overhead along the body's head direction: straight up on foot, out in front when flying flat out
+        // Telekinesis: the car rises off the street (overshooting a touch, then settling) and floats above the hero's
+        // raised hand, bobbing and rocking in the field (js/features/telekinesis.js draws the field)
+        p.lift = Math.min(1, p.lift + dt / 0.6);
+        const x1 = p.lift - 1, k = 1 + 2.4 * x1 * x1 * x1 + 1.4 * x1 * x1;
+        // Overhead along the body's head direction: straight up on foot, out in front when flying flat out
         // (Superman-style); a little forward so the hero stays in view below its tail
         this.heldCentre(me, p.half, v.a);
         g.position.lerpVectors(p.from, v.a, k);
-        v.q.setFromEuler(v.e.set(0, me.yaw, 0)); // carried front-to-back: from the chase camera you see its tail, not a wall
-        g.quaternion.slerpQuaternions(p.fromQ, v.q, k);
-        if (p.lift >= 1) (p.from.copy(g.position), p.fromQ.copy(g.quaternion));
+        const tt = performance.now() / 1000;
+        // carried front-to-back: from the chase camera you see its tail, not a wall
+        v.q.setFromEuler(v.e.set(Math.sin(tt * 1.7) * 0.045, me.yaw + Math.sin(tt * 1.1) * 0.05, Math.sin(tt * 2.3) * 0.055));
+        g.quaternion.slerpQuaternions(p.fromQ, v.q, Math.min(1, k));
         continue;
       }
       if (p.state === 'air') {
