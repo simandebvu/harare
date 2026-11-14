@@ -11,6 +11,10 @@ import { overheadAt } from '../overheads.js';
 
 const MAX_PROPS = 10, GRAVITY = 22, ROAD_Y = 0.22, WRECK_LIFE = 14, GRAB_REACH = 2.6;
 const FLOAT = 0.55; // telekinesis: the gap between the raised hand and a carried car
+const LIFT_RANGE = 12, LIFT_CONE = Math.cos(0.42); // look-to-lift: how far, and how far off the aim point
+// Where powers aim on screen (normalised device y): the centre, except on phones, where the action buttons cover the
+// middle of a tall screen, so the aim point sits higher, in the clear part of the view
+export const AIM_Y = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 0.28 : 0;
 const GLB = { fit: 'fit', sedan: 'sedan', police: 'police', kombi: 'hiace' };
 const glbCache = new Map();
 const glb = (name) => {
@@ -140,21 +144,37 @@ export default {
     return true;
   },
 
-  // The vehicle within arm's reach of the hero, if any (also drives the "Lift" prompt)
+  // The way powers aim: the camera ray through the aim point (AIM_Y)
+  aimDir(out = new this.T.Vector3()) {
+    const cam = this.ctx.camera;
+    return out.set(0, AIM_Y, 0.5).unproject(cam).sub(cam.position).normalize();
+  },
+
+  // What Lift will pick up (also drives the prompt and the target ring, js/features/telekinesis.js): telekinesis, so
+  // the vehicle you are looking at, up to LIFT_RANGE away, the one nearest the aim point; failing that, one within arm's
+  // reach whichever way you face
   target() {
     const me = this.hero();
     if (!me) return null;
-    const tr = this.ctx.traffic;
-    let best = null, bd = GRAB_REACH;
+    const tr = this.ctx.traffic, cam = this.ctx.camera.position, dir = this.aimDir(this._aim || (this._aim = new this.T.Vector3()));
+    let best = null, score = Infinity, near = null, bd = GRAB_REACH;
     const consider = (car, parked) => {
       if (car.away > 0 || (!parked && !car.init)) return;
       const dx = me.x - car.x, dz = me.z - car.z;
-      if (Math.abs(dx) + Math.abs(dz) > 16) return;
+      if (Math.abs(dx) + Math.abs(dz) > LIFT_RANGE + 8) return;
       const cs = Math.cos(car.h), sn = Math.sin(car.h);
       const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;
       const d = Math.hypot(Math.max(0, Math.abs(lx) - car.width / 2), Math.max(0, Math.abs(lz) - car.len / 2));
       const base = parked ? car.y : groundY(car.x, car.z) + ROAD_Y;
-      if (d < bd && me.y > base - 1 && me.y < base + 4.5) (bd = d), (best = { car, parked, base });
+      if (me.y < base - 1 || me.y > base + LIFT_RANGE) return;
+      if (d < bd && me.y < base + 4.5) (bd = d), (near = { car, parked, base });
+      if (d > LIFT_RANGE) return;
+      // how far off the aim point, as seen from the camera
+      const ex = car.x - cam.x, ey = base + 0.9 - cam.y, ez = car.z - cam.z, el = Math.hypot(ex, ey, ez) || 1;
+      const cos = (ex * dir.x + ey * dir.y + ez * dir.z) / el;
+      if (cos < LIFT_CONE) return;
+      const s = (1 - cos) * 40 + d * 0.04;
+      if (s < score) (score = s), (best = { car, parked, base });
     };
     for (const car of tr.cars) consider(car, false);
     for (const car of tr.parkedCars) consider(car, true);
@@ -162,9 +182,9 @@ export default {
     for (const p of this.props) {
       if (p.state !== 'air' || p === this.held) continue;
       const g = p.group.position, d = Math.hypot(g.x - me.x, g.y - (me.y + 1.5), g.z - me.z) - Math.max(p.half.x, p.half.z);
-      if (d < 5) return { prop: p };
+      if (d < 8) return { prop: p };
     }
-    return best;
+    return best || near;
   },
 
   throw() {
@@ -172,7 +192,7 @@ export default {
     this.held = null;
     if (!p) return;
     p.state = 'air';
-    const T = this.T, dir = this.ctx.camera.getWorldDirection(new T.Vector3());
+    const T = this.T, dir = this.aimDir(new T.Vector3());
     // Throw where the camera looks, with a lift so it arcs; heavier vehicles go less far
     const heavy = p.type === 'zupco' ? 0.55 : p.type === 'kombi' ? 0.85 : 1;
     p.vel.set(dir.x * 30 * heavy, Math.max(dir.y * 30, 0) * heavy + 7, dir.z * 30 * heavy);

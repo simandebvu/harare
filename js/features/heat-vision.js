@@ -4,6 +4,7 @@
 // The aim point is found by marching the camera ray through the city's own collision queries — no mesh raycasts.
 import { groundY } from '../util.js';
 import { protectedAt } from '../protected.js';
+import { AIM_Y } from './powers.js';
 
 const RANGE = 170, STEP = 0.5, OVERHEAT = 0.55, MARKS = 90, MARK_LIFE = 40, FIRES = 18, FIRE_LIFE = 8;
 
@@ -91,6 +92,7 @@ export default {
     const st = document.createElement('style');
     st.textContent = `.heat-reticle{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid rgba(255,120,60,.9);border-radius:50%;box-shadow:0 0 8px rgba(255,80,20,.8);pointer-events:none;z-index:9;display:none}.heat-reticle.on{display:block}`;
     document.head.appendChild(st);
+    this.reticle.style.top = ((1 - AIM_Y) / 2) * 100 + '%'; // the aim point (above the buttons on phones)
     document.body.appendChild(this.reticle);
     const typing = (e) => /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName) || e.target.closest?.('[popover]:popover-open');
     addEventListener('keydown', (e) => e.code === 'KeyZ' && !typing(e) && (this.on = true));
@@ -188,7 +190,7 @@ export default {
       this.fireT = 0;
       return;
     }
-    const cam = this.ctx.camera, dir = cam.getWorldDirection(new T.Vector3());
+    const cam = this.ctx.camera, dir = P.aimDir(new T.Vector3()); // through the aim point (higher up on phones)
     const skip = Math.max(0.5, v.b.set(me.x, me.y + 1, me.z).sub(cam.position).dot(dir) + 0.8); // start past the hero
     const hit = (this.last = this.aim(cam.position.clone(), dir, skip));
     // On foot the hero squares up to the target while firing, so the beams leave the face and not over a shoulder

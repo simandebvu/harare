@@ -54,6 +54,15 @@ export default {
     this.under.visible = false;
     this.under.renderOrder = 7;
     ctx.scene.add(this.under);
+    // The target: a pulsing ring on the street around whatever Lift would pick up (look-to-lift, js/features/powers.js)
+    this.mark = new T.Mesh(
+      new T.RingGeometry(0.86, 1, 48).rotateX(-Math.PI / 2),
+      new T.MeshBasicMaterial({ color: 0x7ff0ff, transparent: true, opacity: 0, depthWrite: false, side: T.DoubleSide }),
+    );
+    this.mark.visible = false;
+    this.mark.renderOrder = 6;
+    ctx.scene.add(this.mark);
+    this.markA = 0;
     this.a = 0;
     this.last = null;
   },
@@ -96,6 +105,20 @@ export default {
         P.fire.emit(g.x + j() * h.x * 2.2, g.y - h.y * 0.9, g.z + j() * h.z * 2, j() * 0.6, 0.9 + Math.random() * 1.1, j() * 0.6, 0.9 + Math.random() * 0.6, 0.2 + Math.random() * 0.12, CYAN, 1, 0.1, 0.8, 0.4);
       }
       if (held.lift < 0.8 && Math.random() < 0.5) this.dust(held, 2, 2);
+    }
+    // the target ring
+    const R = !held && P.ready ? P.ready : null, rc = R?.car, rp = R?.prop;
+    this.markA += ((R ? 1 : 0) - this.markA) * (1 - Math.exp(-dt * 10));
+    this.mark.visible = this.markA > 0.02 && (!!R || !!this.markAt);
+    if (R) {
+      if (rc) this.markAt = { x: rc.x, y: R.base + 0.06, z: rc.z, r: Math.hypot(rc.len, rc.width) / 2 + 0.5 };
+      else this.markAt = { x: rp.group.position.x, y: rp.group.position.y - rp.half.y, z: rp.group.position.z, r: Math.hypot(rp.half.x, rp.half.z) + 0.5 };
+    }
+    if (this.mark.visible && this.markAt) {
+      const m = this.markAt, pulse = 1 + Math.sin(this.uni.uTime.value * 6) * 0.06;
+      this.mark.position.set(m.x, m.y, m.z);
+      this.mark.scale.setScalar(m.r * pulse);
+      this.mark.material.opacity = 0.75 * this.markA;
     }
     // the raised palm
     const hand = P.bones?.hand_r;
